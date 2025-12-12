@@ -5,6 +5,13 @@ const EnvSchema = z
     DISCORD_TOKEN: z.string().min(1),
     DISCORD_CLIENT_ID: z.string().min(1),
     DISCORD_GUILD_ID: z.string().min(1).optional(),
+    // Clash of Clans API
+    // Set this in your local environment; do not commit it.
+    CLASH_OF_CLANS_API_TOKEN: z.string().min(1).optional(),
+    CLASH_OF_CLANS_API_BASE_URL: z
+      .string()
+      .url()
+      .default('https://api.clashofclans.com/v1'),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info')
