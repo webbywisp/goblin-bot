@@ -15,6 +15,12 @@ export type CocPlayer = {
   builderBaseTrophies?: number;
   clan?: { tag: string; name: string };
   league?: { name: string };
+  heroes?: Array<{
+    name: string;
+    level: number;
+    maxLevel?: number;
+    village?: 'home' | 'builderBase';
+  }>;
   role?: string;
 };
 
