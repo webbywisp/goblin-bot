@@ -87,6 +87,18 @@ export function normalizePlayerTag(input: string): string {
   return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
 }
 
+// CoC tags only allow these characters (excluding the leading #).
+const COC_TAG_ALLOWED = /^[0289PYLQGRJCUV]+$/;
+
+export function isValidPlayerTag(input: string): boolean {
+  const tag = normalizePlayerTag(input);
+  if (!tag || tag === '#') return false;
+  const raw = tag.slice(1);
+  // Typical tags are ~8-10, but keep it permissive while still filtering obvious bad input.
+  if (raw.length < 3 || raw.length > 15) return false;
+  return COC_TAG_ALLOWED.test(raw);
+}
+
 export class ClashOfClansClient {
   private async request<T>(path: string): Promise<T> {
     const env = getEnv();
@@ -95,12 +107,26 @@ export class ClashOfClansClient {
     }
 
     const url = `${env.CLASH_OF_CLANS_API_BASE_URL}${path}`;
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${env.CLASH_OF_CLANS_API_TOKEN}`
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), env.CLASH_OF_CLANS_API_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${env.CLASH_OF_CLANS_API_TOKEN}`
+        },
+        signal: controller.signal
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('Clash of Clans API request timed out');
       }
-    });
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!res.ok) {
       let err: CocApiError | undefined;
@@ -123,10 +149,10 @@ export class ClashOfClansClient {
   }
 
   async getPlayerByTag(playerTag: string): Promise<CocPlayer> {
-    const tag = normalizePlayerTag(playerTag);
-    if (!tag || tag === '#') {
+    if (!isValidPlayerTag(playerTag)) {
       throw new Error('Invalid player tag');
     }
+    const tag = normalizePlayerTag(playerTag);
 
     return await this.request<CocPlayer>(`/players/${encodeURIComponent(tag)}`);
   }

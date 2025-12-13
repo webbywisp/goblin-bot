@@ -8,7 +8,12 @@ import {
   ThreadAutoArchiveDuration
 } from 'discord.js';
 import type { ChatInputCommand } from '@/commands/types';
-import { ClashOfClansClient, type CocWarAttack, type CocWarMember } from '@/integrations/clashOfClans/client';
+import {
+  ClashOfClansClient,
+  isValidPlayerTag,
+  type CocWarAttack,
+  type CocWarMember
+} from '@/integrations/clashOfClans/client';
 
 function formatCocTime(input?: string): string | undefined {
   if (!input) return undefined;
@@ -75,6 +80,14 @@ const command: ChatInputCommand = {
     await interaction.deferReply();
 
     const playerTag = interaction.options.getString('player_tag', true);
+    if (!isValidPlayerTag(playerTag)) {
+      await interaction.editReply(
+        `Invalid player tag.\n` +
+          `- Tag: \`${playerTag}\`\n` +
+          `Expected something like \`#ABC123\` (letters/numbers only).`
+      );
+      return;
+    }
     const client = new ClashOfClansClient();
 
     try {
