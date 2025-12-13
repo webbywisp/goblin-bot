@@ -15,6 +15,7 @@ import {
   type CocWarAttack,
   type CocWarMember
 } from '@/integrations/clashOfClans/client';
+import { getInstanceLabel } from '@/utils/instance';
 
 function formatCocTime(input?: string): string | undefined {
   if (!input) return undefined;
@@ -348,7 +349,8 @@ const command: ChatInputCommand = {
         content:
           `Could not look up that player tag.\n` +
           `- Tag: \`${playerTag}\`\n` +
-          `- Error: ${msg}\n\n` +
+          `- Error: ${msg}\n` +
+          `- Instance: ${getInstanceLabel()}\n\n` +
           `Make sure \`CLASH_OF_CLANS_API_TOKEN\` is set in your environment and the tag is correct.`
       });
     }

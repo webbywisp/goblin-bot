@@ -18,6 +18,8 @@ const EnvSchema = z
       .default('https://api.clashofclans.com/v1'),
     // Optional: hard timeout for CoC API requests (ms)
     CLASH_OF_CLANS_API_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10_000),
+    // Optional: helps identify which running instance replied in Discord
+    BOT_INSTANCE_LABEL: z.string().min(1).optional(),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info')
