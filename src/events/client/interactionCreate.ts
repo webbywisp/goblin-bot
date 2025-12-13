@@ -1,6 +1,7 @@
 import type { ClientEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
 import { getChatInputCommandMap } from '@/bot/state';
+import { handleRecruitComponentInteraction } from '@/recruit/handleRecruitComponentInteraction';
 import { MessageFlags } from 'discord.js';
 
 const event: ClientEvent<'interactionCreate'> = {
@@ -12,6 +13,29 @@ const event: ClientEvent<'interactionCreate'> = {
         await command.autocomplete(interaction);
       }
       return;
+    }
+
+    // Handle /recruit buttons/selects (Accept/Close) globally so they keep working
+    // even after the short-lived per-message collectors expire.
+    if (interaction.isButton() || interaction.isStringSelectMenu()) {
+      try {
+        const handled = await handleRecruitComponentInteraction(interaction);
+        if (handled) return;
+      } catch (err) {
+        logger.error({ err, customId: interaction.customId }, 'Component interaction failed');
+
+        const payload = {
+          content: 'Something went wrong while handling that button/menu.',
+          flags: MessageFlags.Ephemeral
+        } as const;
+
+        if (interaction.deferred || interaction.replied) {
+          await interaction.followUp(payload);
+        } else {
+          await interaction.reply(payload);
+        }
+        return;
+      }
     }
 
     if (!interaction.isChatInputCommand()) return;

@@ -262,11 +262,29 @@ const command: ChatInputCommand = {
           .setLabel('Next')
           .setDisabled(pages.length <= 1);
 
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, nextBtn);
-        const pagedMessage = await thread.send({ embeds: [pages[pageIndex]], components: [row] });
+        const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, nextBtn);
+
+        const tagNoHash = player.tag.replace('#', '');
+        const th = typeof player.townHallLevel === 'number' ? player.townHallLevel : 0;
+        const acceptBtn = new ButtonBuilder()
+          .setCustomId(`recruit:accept:${th}:${tagNoHash}`)
+          .setStyle(ButtonStyle.Success)
+          .setLabel('Accept')
+          .setDisabled(th <= 0);
+        const closeBtn = new ButtonBuilder()
+          .setCustomId(`recruit:close:${tagNoHash}`)
+          .setStyle(ButtonStyle.Danger)
+          .setLabel('Close');
+        const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, closeBtn);
+
+        const pagedMessage = await thread.send({
+          embeds: [pages[pageIndex]],
+          components: [navRow, actionRow]
+        });
 
         const collector = pagedMessage.createMessageComponentCollector({
           componentType: ComponentType.Button,
+          filter: (i) => i.customId === `${customBase}:prev` || i.customId === `${customBase}:next`,
           time: 15 * 60 * 1000
         });
 
@@ -276,17 +294,17 @@ const command: ChatInputCommand = {
 
           prevBtn.setDisabled(pageIndex === 0);
           nextBtn.setDisabled(pageIndex === pages.length - 1);
-          const updatedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, nextBtn);
+          const updatedNavRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, nextBtn);
 
-          await i.update({ embeds: [pages[pageIndex]], components: [updatedRow] });
+          await i.update({ embeds: [pages[pageIndex]], components: [updatedNavRow, actionRow] });
         });
 
         collector.on('end', async () => {
           try {
             prevBtn.setDisabled(true);
             nextBtn.setDisabled(true);
-            const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, nextBtn);
-            await pagedMessage.edit({ components: [disabledRow] });
+            const disabledNavRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, nextBtn);
+            await pagedMessage.edit({ components: [disabledNavRow, actionRow] });
           } catch {
             // ignore
           }
