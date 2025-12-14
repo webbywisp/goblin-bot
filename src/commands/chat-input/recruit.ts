@@ -350,7 +350,7 @@ const command: ChatInputCommand = {
           `Could not look up that player tag.\n` +
           `- Tag: \`${playerTag}\`\n` +
           `- Error: ${msg}\n` +
-          `- Instance: ${getInstanceLabel()}\n\n` +
+          `- Instance: ${getInstanceLabel()}\n` +
           `Make sure \`CLASH_OF_CLANS_API_TOKEN\` is set in your environment and the tag is correct.`
       });
     }
@@ -358,5 +358,4 @@ const command: ChatInputCommand = {
 };
 
 export default command;
-
 
