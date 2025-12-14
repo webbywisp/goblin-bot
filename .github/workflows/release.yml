@@ -160,6 +160,7 @@ jobs:
             : "\${DISCORD_TOKEN:?Missing DISCORD_TOKEN (configure GitHub Secret)}"
             : "\${DISCORD_CLIENT_ID:?Missing DISCORD_CLIENT_ID (configure GitHub Secret)}"
 
+            # Source nvm if it exists (nvm is a function, not a command)
             if [ -n "${NVM_DIR:-}" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
               . "$NVM_DIR/nvm.sh"
             elif [ -s "$HOME/.nvm/nvm.sh" ]; then
@@ -169,10 +170,23 @@ jobs:
 
             cd "$DEPLOY_PATH"
 
-            if command -v nvm >/dev/null 2>&1; then
-              nvm install "${NODE_VERSION:-22}"
+            # Check if nvm function is available (use 'type' instead of 'command -v' for functions)
+            if type nvm >/dev/null 2>&1; then
+              echo "Using nvm to manage Node.js version..."
+              nvm install "${NODE_VERSION:-22}" || true
               nvm use "${NODE_VERSION:-22}"
+              nvm alias default "${NODE_VERSION:-22}" || true
+            elif ! command -v node >/dev/null 2>&1; then
+              echo "ERROR: nvm not found and Node.js is not installed"
+              exit 1
             fi
+
+            # Verify npm is available
+            if ! command -v npm >/dev/null 2>&1; then
+              echo "ERROR: npm is not available"
+              exit 1
+            fi
+            echo "Using Node.js $(node --version) and npm $(npm --version)"
 
             # Install build dependencies if not already present (needed for native modules)
             if ! command -v make >/dev/null 2>&1; then
