@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+
+env:
+  NODE_VERSION: 22
+  # Remote deploy path (relative to SSH user's home directory)
+  DEPLOY_DIR: goblin-bot
+  # PM2 process name on the server
+  APP_NAME: goblin-bot
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: goblin-bot-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            dist/
+            package.json
+            package-lock.json
+
+  deploy-discord-commands:
+    name: Deploy Discord commands
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Deploy
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+        run: |
+          if [ -z "${DISCORD_GUILD_ID:-}" ]; then unset DISCORD_GUILD_ID; fi
+          npm run deploy
+
+  deploy-server:
+    name: Deploy to server
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: goblin-bot-${{ github.sha }}
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          CLASH_OF_CLANS_API_TOKEN: ${{ secrets.CLASH_OF_CLANS_API_TOKEN }}
+          CLASH_OF_CLANS_API_BASE_URL: ${{ vars.CLASH_OF_CLANS_API_BASE_URL }}
+          CLASH_OF_CLANS_API_TIMEOUT_MS: ${{ vars.CLASH_OF_CLANS_API_TIMEOUT_MS }}
+          BOT_INSTANCE_LABEL: ${{ vars.BOT_INSTANCE_LABEL }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "Missing required secret: SSH_HOST"
+            exit 1
+          fi
+
+          echo "Deploying to $SSH_HOST:${{ env.DEPLOY_DIR }}"
+
+          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "$SSH_HOST" "mkdir -p '${{ env.DEPLOY_DIR }}'"
+
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" dist/ "$SSH_HOST":"${{ env.DEPLOY_DIR }}"/dist/
+          rsync -az -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" package.json package-lock.json "$SSH_HOST":"${{ env.DEPLOY_DIR }}"/
+
+          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "$SSH_HOST" "export DEPLOY_DIR='${{ env.DEPLOY_DIR }}' APP_NAME='${{ env.APP_NAME }}' NODE_VERSION='${{ env.NODE_VERSION }}' NODE_ENV='production' DISCORD_TOKEN='$DISCORD_TOKEN' DISCORD_CLIENT_ID='$DISCORD_CLIENT_ID' DISCORD_GUILD_ID='${DISCORD_GUILD_ID:-}' CLASH_OF_CLANS_API_TOKEN='${CLASH_OF_CLANS_API_TOKEN:-}' CLASH_OF_CLANS_API_BASE_URL='${CLASH_OF_CLANS_API_BASE_URL:-}' CLASH_OF_CLANS_API_TIMEOUT_MS='${CLASH_OF_CLANS_API_TIMEOUT_MS:-}' BOT_INSTANCE_LABEL='${BOT_INSTANCE_LABEL:-}' LOG_LEVEL='${LOG_LEVEL:-}'; bash -s" << 'ENDSSH'
+            set -euo pipefail
+            DEPLOY_PATH="$HOME/$DEPLOY_DIR"
+
+            : "${DISCORD_TOKEN:?Missing DISCORD_TOKEN (configure GitHub Secret)}"
+            : "${DISCORD_CLIENT_ID:?Missing DISCORD_CLIENT_ID (configure GitHub Secret)}"
+
+            # Important: GitHub passes unset secrets/vars as empty strings. Our Zod env parsing
+            # treats empty strings as "present", which breaks .optional() + .default().
+            if [ -z "${DISCORD_GUILD_ID:-}" ]; then unset DISCORD_GUILD_ID; fi
+            if [ -z "${CLASH_OF_CLANS_API_TOKEN:-}" ]; then unset CLASH_OF_CLANS_API_TOKEN; fi
+            if [ -z "${CLASH_OF_CLANS_API_BASE_URL:-}" ]; then unset CLASH_OF_CLANS_API_BASE_URL; fi
+            if [ -z "${CLASH_OF_CLANS_API_TIMEOUT_MS:-}" ]; then unset CLASH_OF_CLANS_API_TIMEOUT_MS; fi
+            if [ -z "${BOT_INSTANCE_LABEL:-}" ]; then unset BOT_INSTANCE_LABEL; fi
+            if [ -z "${LOG_LEVEL:-}" ]; then unset LOG_LEVEL; fi
+
+            if [ -n "${NVM_DIR:-}" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
+              . "$NVM_DIR/nvm.sh"
+            elif [ -s "$HOME/.nvm/nvm.sh" ]; then
+              export NVM_DIR="$HOME/.nvm"
+              . "$NVM_DIR/nvm.sh"
+            fi
+
+            cd "$DEPLOY_PATH"
+
+            if command -v nvm >/dev/null 2>&1; then
+              nvm install "${NODE_VERSION:-22}"
+              nvm use "${NODE_VERSION:-22}"
+            fi
+
+            npm ci --omit=dev
+
+            if command -v pm2 >/dev/null 2>&1; then
+              if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
+                pm2 restart "$APP_NAME" --update-env
+              else
+                pm2 start "$DEPLOY_PATH/dist/index.js" --name "$APP_NAME" --time
+              fi
+              pm2 save
+            else
+              echo "pm2 is not installed on server; skipping process restart"
+            fi
+          ENDSSH

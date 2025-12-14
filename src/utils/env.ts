@@ -5,10 +5,6 @@ const EnvSchema = z
     DISCORD_TOKEN: z.string().min(1),
     DISCORD_CLIENT_ID: z.string().min(1),
     DISCORD_GUILD_ID: z.string().min(1).optional(),
-    // /recruit leader ping config (JSON)
-    // Example:
-    // [{"minTh":12,"maxTh":13,"roleIds":["123","456"]},{"minTh":14,"maxTh":17,"roleIds":["789"]}]
-    RECRUIT_TH_ROLE_RANGES: z.string().min(1).optional(),
     // Clash of Clans API
     // Set this in your local environment; do not commit it.
     CLASH_OF_CLANS_API_TOKEN: z.string().min(1).optional(),
