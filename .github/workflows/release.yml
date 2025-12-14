@@ -113,62 +113,52 @@ jobs:
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" dist/ "$SSH_HOST":"${{ env.DEPLOY_DIR }}"/dist/
           rsync -az -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" package.json package-lock.json "$SSH_HOST":"${{ env.DEPLOY_DIR }}"/
 
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "$SSH_HOST" bash -s << 'ENDSSH' \
-            "${{ env.DEPLOY_DIR }}" \
-            "${{ env.APP_NAME }}" \
-            "${{ env.NODE_VERSION }}" \
-            "$DISCORD_TOKEN" \
-            "$DISCORD_CLIENT_ID" \
-            "${DISCORD_GUILD_ID:-}" \
-            "${CLASH_OF_CLANS_API_TOKEN:-}" \
-            "${CLASH_OF_CLANS_API_BASE_URL:-}" \
-            "${CLASH_OF_CLANS_API_TIMEOUT_MS:-}" \
-            "${BOT_INSTANCE_LABEL:-}" \
-            "${LOG_LEVEL:-}"
+          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "$SSH_HOST" << ENDSSH
             set -euo pipefail
             
-            DEPLOY_DIR="$1"
-            APP_NAME="$2"
-            NODE_VERSION="$3"
-            DISCORD_TOKEN="$4"
-            DISCORD_CLIENT_ID="$5"
-            DISCORD_GUILD_ID="$6"
-            CLASH_OF_CLANS_API_TOKEN="$7"
-            CLASH_OF_CLANS_API_BASE_URL="$8"
-            CLASH_OF_CLANS_API_TIMEOUT_MS="$9"
-            BOT_INSTANCE_LABEL="${10}"
-            LOG_LEVEL="${11}"
+            DEPLOY_PATH="\$HOME/${{ env.DEPLOY_DIR }}"
             
-            # Export all variables so PM2 can pick them up
-            export DEPLOY_DIR APP_NAME NODE_VERSION NODE_ENV='production'
-            export DISCORD_TOKEN DISCORD_CLIENT_ID
-            [ -n "$DISCORD_GUILD_ID" ] && export DISCORD_GUILD_ID
-            [ -n "$CLASH_OF_CLANS_API_TOKEN" ] && export CLASH_OF_CLANS_API_TOKEN
-            [ -n "$CLASH_OF_CLANS_API_BASE_URL" ] && export CLASH_OF_CLANS_API_BASE_URL
-            [ -n "$CLASH_OF_CLANS_API_TIMEOUT_MS" ] && export CLASH_OF_CLANS_API_TIMEOUT_MS
-            [ -n "$BOT_INSTANCE_LABEL" ] && export BOT_INSTANCE_LABEL
-            [ -n "$LOG_LEVEL" ] && export LOG_LEVEL
+            # Set environment variables for PM2
+            export NODE_ENV="production"
+            export DEPLOY_DIR="${{ env.DEPLOY_DIR }}"
+            export APP_NAME="${{ env.APP_NAME }}"
+            export NODE_VERSION="${{ env.NODE_VERSION }}"
+            export DISCORD_TOKEN="${{ secrets.DISCORD_TOKEN }}"
+            export DISCORD_CLIENT_ID="${{ secrets.DISCORD_CLIENT_ID }}"
+            export DISCORD_GUILD_ID="${{ secrets.DISCORD_GUILD_ID }}"
+            export CLASH_OF_CLANS_API_TOKEN="${{ secrets.CLASH_OF_CLANS_API_TOKEN }}"
+            export CLASH_OF_CLANS_API_BASE_URL="${{ vars.CLASH_OF_CLANS_API_BASE_URL }}"
+            export CLASH_OF_CLANS_API_TIMEOUT_MS="${{ vars.CLASH_OF_CLANS_API_TIMEOUT_MS }}"
+            export BOT_INSTANCE_LABEL="${{ vars.BOT_INSTANCE_LABEL }}"
+            export LOG_LEVEL="${{ vars.LOG_LEVEL }}"
+            
+            # Important: GitHub passes unset secrets/vars as empty strings. Our Zod env parsing
+            # treats empty strings as "present", which breaks .optional() + .default().
+            if [ -z "\${DISCORD_GUILD_ID:-}" ]; then unset DISCORD_GUILD_ID; fi
+            if [ -z "\${CLASH_OF_CLANS_API_TOKEN:-}" ]; then unset CLASH_OF_CLANS_API_TOKEN; fi
+            if [ -z "\${CLASH_OF_CLANS_API_BASE_URL:-}" ]; then unset CLASH_OF_CLANS_API_BASE_URL; fi
+            if [ -z "\${CLASH_OF_CLANS_API_TIMEOUT_MS:-}" ]; then unset CLASH_OF_CLANS_API_TIMEOUT_MS; fi
+            if [ -z "\${BOT_INSTANCE_LABEL:-}" ]; then unset BOT_INSTANCE_LABEL; fi
+            if [ -z "\${LOG_LEVEL:-}" ]; then unset LOG_LEVEL; fi
             
             # Log environment variables (masking sensitive values)
             echo "=== Environment Variables ==="
-            echo "DEPLOY_DIR=$DEPLOY_DIR"
-            echo "APP_NAME=$APP_NAME"
-            echo "NODE_VERSION=$NODE_VERSION"
-            echo "NODE_ENV=production"
-            echo "DISCORD_TOKEN=${DISCORD_TOKEN:+SET (${#DISCORD_TOKEN} chars)}"
-            echo "DISCORD_CLIENT_ID=$DISCORD_CLIENT_ID"
-            echo "DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-<not set>}"
-            echo "CLASH_OF_CLANS_API_TOKEN=${CLASH_OF_CLANS_API_TOKEN:+SET (${#CLASH_OF_CLANS_API_TOKEN} chars)}"
-            echo "CLASH_OF_CLANS_API_BASE_URL=${CLASH_OF_CLANS_API_BASE_URL:-<not set>}"
-            echo "CLASH_OF_CLANS_API_TIMEOUT_MS=${CLASH_OF_CLANS_API_TIMEOUT_MS:-<not set>}"
-            echo "BOT_INSTANCE_LABEL=${BOT_INSTANCE_LABEL:-<not set>}"
-            echo "LOG_LEVEL=${LOG_LEVEL:-<not set>}"
+            echo "DEPLOY_DIR=\$DEPLOY_DIR"
+            echo "APP_NAME=\$APP_NAME"
+            echo "NODE_VERSION=\$NODE_VERSION"
+            echo "NODE_ENV=\$NODE_ENV"
+            echo "DISCORD_TOKEN=\${DISCORD_TOKEN:+SET (\${#DISCORD_TOKEN} chars)}"
+            echo "DISCORD_CLIENT_ID=\$DISCORD_CLIENT_ID"
+            echo "DISCORD_GUILD_ID=\${DISCORD_GUILD_ID:-<not set>}"
+            echo "CLASH_OF_CLANS_API_TOKEN=\${CLASH_OF_CLANS_API_TOKEN:+SET (\${#CLASH_OF_CLANS_API_TOKEN} chars)}"
+            echo "CLASH_OF_CLANS_API_BASE_URL=\${CLASH_OF_CLANS_API_BASE_URL:-<not set>}"
+            echo "CLASH_OF_CLANS_API_TIMEOUT_MS=\${CLASH_OF_CLANS_API_TIMEOUT_MS:-<not set>}"
+            echo "BOT_INSTANCE_LABEL=\${BOT_INSTANCE_LABEL:-<not set>}"
+            echo "LOG_LEVEL=\${LOG_LEVEL:-<not set>}"
             echo "============================="
             
-            DEPLOY_PATH="$HOME/$DEPLOY_DIR"
-
-            : "${DISCORD_TOKEN:?Missing DISCORD_TOKEN (configure GitHub Secret)}"
-            : "${DISCORD_CLIENT_ID:?Missing DISCORD_CLIENT_ID (configure GitHub Secret)}"
+            : "\${DISCORD_TOKEN:?Missing DISCORD_TOKEN (configure GitHub Secret)}"
+            : "\${DISCORD_CLIENT_ID:?Missing DISCORD_CLIENT_ID (configure GitHub Secret)}"
 
             if [ -n "${NVM_DIR:-}" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
               . "$NVM_DIR/nvm.sh"
