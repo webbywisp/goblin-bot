@@ -186,8 +186,13 @@ jobs:
             elif [ -s "/root/.nvm/nvm.sh" ]; then
               echo "Found nvm at /root/.nvm"
               export NVM_DIR="/root/.nvm"
-              . "$NVM_DIR/nvm.sh"
-              NVM_LOADED=true
+              if . "$NVM_DIR/nvm.sh" 2>&1; then
+                echo "Successfully sourced nvm.sh"
+                NVM_LOADED=true
+              else
+                echo "WARNING: Failed to source /root/.nvm/nvm.sh (may be permission issue)"
+                NVM_LOADED=false
+              fi
             # 3. Check if NVM_DIR is already set in environment
             elif [ -n "${NVM_DIR:-}" ] && [ -s "${NVM_DIR}/nvm.sh" ]; then
               echo "Found nvm at \$NVM_DIR: $NVM_DIR"
@@ -228,10 +233,14 @@ jobs:
 
             # Verify nvm was loaded
             if [ "$NVM_LOADED" = true ]; then
+              echo "DEBUG: Verifying nvm function..."
               if type nvm >/dev/null 2>&1; then
                 echo "nvm function loaded successfully"
+                echo "DEBUG: NVM_DIR=$NVM_DIR"
               else
                 echo "WARNING: nvm.sh sourced but nvm function not available"
+                echo "DEBUG: Checking if nvm.sh was actually sourced..."
+                echo "DEBUG: type nvm output: $(type nvm 2>&1 || echo 'nvm not found')"
                 # Try sourcing bashrc/profile as fallback (where nvm is typically loaded)
                 if [ -f "$HOME/.bashrc" ]; then
                   echo "Trying to source .bashrc..."
@@ -251,8 +260,18 @@ jobs:
             # Use nvm to set up Node.js if available
             if [ "$NVM_LOADED" = true ]; then
               echo "Using nvm to manage Node.js version..."
-              nvm install "${NODE_VERSION:-22}" || true
-              nvm use "${NODE_VERSION:-22}"
+              echo "DEBUG: Running nvm install ${NODE_VERSION:-22}..."
+              if ! nvm install "${NODE_VERSION:-22}" 2>&1; then
+                echo "WARNING: nvm install failed, continuing anyway..."
+              fi
+              echo "DEBUG: Running nvm use ${NODE_VERSION:-22}..."
+              if ! nvm use "${NODE_VERSION:-22}" 2>&1; then
+                echo "ERROR: nvm use failed"
+                echo "DEBUG: Checking available Node.js versions..."
+                nvm list 2>&1 || echo "nvm list failed"
+                exit 1
+              fi
+              echo "DEBUG: nvm use succeeded"
               # nvm use should update PATH, but ensure it's set correctly
               if [ -n "${NVM_DIR:-}" ]; then
                 # Add nvm's current node version to PATH if not already there
