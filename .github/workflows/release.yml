@@ -173,6 +173,8 @@ jobs:
             echo "DEBUG: HOME=$HOME"
             echo "DEBUG: USER=$USER"
             echo "DEBUG: Checking if $HOME/.nvm/nvm.sh exists: $([ -s "$HOME/.nvm/nvm.sh" ] && echo 'YES' || echo 'NO')"
+            echo "DEBUG: Checking if /root/.nvm/nvm.sh exists: $([ -s "/root/.nvm/nvm.sh" ] && echo 'YES' || echo 'NO')"
+            echo "DEBUG: Checking if /root/.nvm/nvm.sh is readable: $([ -r "/root/.nvm/nvm.sh" ] && echo 'YES' || echo 'NO')"
             NVM_LOADED=false
             
             # Check common nvm locations (order matters - check most likely first)
@@ -183,15 +185,28 @@ jobs:
               . "$NVM_DIR/nvm.sh"
               NVM_LOADED=true
             # 2. Check /root/.nvm explicitly (in case HOME is not /root)
-            elif [ -s "/root/.nvm/nvm.sh" ]; then
-              echo "Found nvm at /root/.nvm"
+            elif [ -r "/root/.nvm/nvm.sh" ] && [ -s "/root/.nvm/nvm.sh" ]; then
+              echo "Found nvm at /root/.nvm (readable: yes)"
               export NVM_DIR="/root/.nvm"
+              echo "DEBUG: About to source $NVM_DIR/nvm.sh"
               if . "$NVM_DIR/nvm.sh" 2>&1; then
                 echo "Successfully sourced nvm.sh"
                 NVM_LOADED=true
               else
-                echo "WARNING: Failed to source /root/.nvm/nvm.sh (may be permission issue)"
-                NVM_LOADED=false
+                SOURCE_ERROR=$?
+                echo "WARNING: Failed to source /root/.nvm/nvm.sh (exit code: $SOURCE_ERROR)"
+                echo "DEBUG: This may be because user '$USER' cannot access root's nvm"
+                echo "DEBUG: Trying to install nvm for current user..."
+                # Try to install nvm for the current user
+                if [ ! -d "$HOME/.nvm" ]; then
+                  mkdir -p "$HOME/.nvm"
+                  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+                  export NVM_DIR="$HOME/.nvm"
+                  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && NVM_LOADED=true
+                fi
+                if [ "$NVM_LOADED" = false ]; then
+                  echo "DEBUG: Could not install nvm for current user, will try system Node.js"
+                fi
               fi
             # 3. Check if NVM_DIR is already set in environment
             elif [ -n "${NVM_DIR:-}" ] && [ -s "${NVM_DIR}/nvm.sh" ]; then
@@ -291,12 +306,17 @@ jobs:
                 echo "  - \$NVM_DIR/nvm.sh: <not set>"
               fi
               echo "  - \$HOME/.nvm/nvm.sh: $HOME/.nvm/nvm.sh ($([ -s "$HOME/.nvm/nvm.sh" ] && echo 'exists' || echo 'NOT FOUND'))"
+              echo "  - /root/.nvm/nvm.sh ($([ -s "/root/.nvm/nvm.sh" ] && echo 'exists' || echo 'NOT FOUND'))"
               echo "  - /usr/local/share/nvm/nvm.sh ($([ -s "/usr/local/share/nvm/nvm.sh" ] && echo 'exists' || echo 'NOT FOUND'))"
               echo "Current HOME: $HOME"
               echo "Current USER: $USER"
               echo "Current PATH: $PATH"
-              echo "Listing $HOME/.nvm contents (if exists):"
-              ls -la "$HOME/.nvm" 2>/dev/null || echo "  Directory does not exist"
+              echo ""
+              echo "NOTE: If nvm is installed in /root/.nvm but you're running as user '$USER',"
+              echo "you may need to either:"
+              echo "  1. Configure SSH to connect as root user"
+              echo "  2. Install nvm for user '$USER'"
+              echo "  3. Install Node.js system-wide"
               exit 1
             fi
 
