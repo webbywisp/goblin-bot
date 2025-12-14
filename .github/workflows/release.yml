@@ -163,8 +163,8 @@ jobs:
             cd "$DEPLOY_PATH"
 
             # Load nvm and use the correct Node version (same approach as SleepAPI)
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            export NVM_DIR="\$HOME/.nvm"
+            [ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"
 
             # Use the Node version specified
             nvm install "${NODE_VERSION:-22}" || true
@@ -173,13 +173,13 @@ jobs:
             # Verify npm is available
             if ! command -v npm >/dev/null 2>&1; then
               echo "ERROR: npm is not available after nvm use"
-              echo "HOME: $HOME"
-              echo "NVM_DIR: $NVM_DIR"
-              echo "PATH: $PATH"
-              echo "Node version: $(command -v node || echo 'not found')"
+              echo "HOME: \$HOME"
+              echo "NVM_DIR: \$NVM_DIR"
+              echo "PATH: \$PATH"
+              echo "Node version: \$(command -v node || echo 'not found')"
               exit 1
             fi
-            echo "Using Node.js $(node --version) and npm $(npm --version)"
+            echo "Using Node.js \$(node --version) and npm \$(npm --version)"
 
             # Install build dependencies if not already present (needed for native modules)
             if ! command -v make >/dev/null 2>&1; then
