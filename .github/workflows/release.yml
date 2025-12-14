@@ -160,30 +160,95 @@ jobs:
             : "\${DISCORD_TOKEN:?Missing DISCORD_TOKEN (configure GitHub Secret)}"
             : "\${DISCORD_CLIENT_ID:?Missing DISCORD_CLIENT_ID (configure GitHub Secret)}"
 
-            # Source nvm if it exists (nvm is a function, not a command)
-            if [ -n "${NVM_DIR:-}" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
-              . "$NVM_DIR/nvm.sh"
-            elif [ -s "$HOME/.nvm/nvm.sh" ]; then
-              export NVM_DIR="$HOME/.nvm"
-              . "$NVM_DIR/nvm.sh"
-            fi
-
             cd "$DEPLOY_PATH"
 
-            # Check if nvm function is available (use 'type' instead of 'command -v' for functions)
-            if type nvm >/dev/null 2>&1; then
+            # Source nvm if it exists (nvm is a function, not a command)
+            # In non-interactive shells, nvm.sh needs to be explicitly sourced
+            echo "Looking for nvm..."
+            NVM_LOADED=false
+            
+            # Try common nvm locations
+            if [ -n "${NVM_DIR:-}" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
+              echo "Found nvm at \$NVM_DIR: $NVM_DIR"
+              export NVM_DIR
+              . "$NVM_DIR/nvm.sh"
+              NVM_LOADED=true
+            elif [ -s "$HOME/.nvm/nvm.sh" ]; then
+              echo "Found nvm at \$HOME/.nvm"
+              export NVM_DIR="$HOME/.nvm"
+              . "$NVM_DIR/nvm.sh"
+              NVM_LOADED=true
+            elif [ -s "/usr/local/share/nvm/nvm.sh" ]; then
+              echo "Found nvm at /usr/local/share/nvm"
+              export NVM_DIR="/usr/local/share/nvm"
+              . "$NVM_DIR/nvm.sh"
+              NVM_LOADED=true
+            else
+              # Try to find nvm.sh by checking common install locations
+              echo "Searching for nvm.sh..."
+              for nvm_path in "$HOME/.nvm" "/usr/local/share/nvm" "/opt/nvm" "$HOME/.local/share/nvm"; do
+                if [ -s "$nvm_path/nvm.sh" ]; then
+                  echo "Found nvm at $nvm_path"
+                  export NVM_DIR="$nvm_path"
+                  . "$NVM_DIR/nvm.sh"
+                  NVM_LOADED=true
+                  break
+                fi
+              done
+            fi
+
+            # Verify nvm was loaded
+            if [ "$NVM_LOADED" = true ]; then
+              if type nvm >/dev/null 2>&1; then
+                echo "nvm function loaded successfully"
+              else
+                echo "WARNING: nvm.sh sourced but nvm function not available"
+                # Try sourcing bashrc/profile as fallback (where nvm is typically loaded)
+                if [ -f "$HOME/.bashrc" ]; then
+                  echo "Trying to source .bashrc..."
+                  # Source only nvm-related parts to avoid side effects
+                  grep -q "nvm.sh" "$HOME/.bashrc" && . "$HOME/.bashrc" 2>/dev/null || true
+                fi
+                if ! type nvm >/dev/null 2>&1 && [ -f "$HOME/.bash_profile" ]; then
+                  echo "Trying to source .bash_profile..."
+                  grep -q "nvm.sh" "$HOME/.bash_profile" && . "$HOME/.bash_profile" 2>/dev/null || true
+                fi
+                if ! type nvm >/dev/null 2>&1; then
+                  NVM_LOADED=false
+                fi
+              fi
+            fi
+
+            # Use nvm to set up Node.js if available
+            if [ "$NVM_LOADED" = true ]; then
               echo "Using nvm to manage Node.js version..."
               nvm install "${NODE_VERSION:-22}" || true
               nvm use "${NODE_VERSION:-22}"
+              # nvm use should update PATH, but ensure it's set correctly
+              if [ -n "${NVM_DIR:-}" ]; then
+                # Add nvm's current node version to PATH if not already there
+                CURRENT_NODE=$(nvm current 2>/dev/null || echo "v${NODE_VERSION:-22}")
+                NODE_BIN="$NVM_DIR/versions/node/$CURRENT_NODE/bin"
+                if [ -d "$NODE_BIN" ] && [[ ":$PATH:" != *":$NODE_BIN:"* ]]; then
+                  export PATH="$NODE_BIN:$PATH"
+                fi
+              fi
               nvm alias default "${NODE_VERSION:-22}" || true
             elif ! command -v node >/dev/null 2>&1; then
               echo "ERROR: nvm not found and Node.js is not installed"
+              echo "Checked locations:"
+              echo "  - \$NVM_DIR/nvm.sh: ${NVM_DIR:-<not set>}"
+              echo "  - \$HOME/.nvm/nvm.sh: $HOME/.nvm/nvm.sh"
+              echo "  - /usr/local/share/nvm/nvm.sh"
+              echo "Current PATH: $PATH"
               exit 1
             fi
 
             # Verify npm is available
             if ! command -v npm >/dev/null 2>&1; then
               echo "ERROR: npm is not available"
+              echo "PATH: $PATH"
+              echo "Node version: $(command -v node || echo 'not found')"
               exit 1
             fi
             echo "Using Node.js $(node --version) and npm $(npm --version)"
