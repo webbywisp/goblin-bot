@@ -1,8 +1,8 @@
-import { SlashCommandBuilder } from 'discord.js';
 import type { ChatInputCommand } from '@/commands/types';
 import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
 import { getRecruitAllowedRoleIds } from '@/recruit/configStore';
 import { getRoleIdsFromMember } from '@/utils/discordRoles';
+import { SlashCommandBuilder } from 'discord.js';
 
 const command: ChatInputCommand = {
   data: new SlashCommandBuilder()
@@ -89,7 +89,7 @@ const command: ChatInputCommand = {
       }
 
       await interaction.editReply({ content });
-    } catch (err) {
+    } catch {
       await interaction.editReply('Could not load open recruit threads right now. Please try again.');
     }
   }

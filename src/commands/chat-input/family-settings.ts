@@ -2,10 +2,7 @@ import { ActionRowBuilder, PermissionFlagsBits, RoleSelectMenuBuilder, SlashComm
 import type { ChatInputCommand } from '@/commands/types';
 import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
 import { getRoleIdsFromMember } from '@/utils/discordRoles';
-import {
-  getRecruitAllowedRoleSummary,
-  getRecruitRoleMappingSummary
-} from '@/recruit/configStore';
+import { getRecruitAllowedRoleSummary, getRecruitRoleMappingSummary } from '@/recruit/configStore';
 
 const command: ChatInputCommand = {
   data: new SlashCommandBuilder()
