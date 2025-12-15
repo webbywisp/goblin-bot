@@ -306,6 +306,11 @@ const command: ChatInputCommand = {
 
         const tagNoHash = player.tag.replace('#', '');
         const th = typeof player.townHallLevel === 'number' ? player.townHallLevel : 0;
+        
+        // Get the reply message ID to include in close button for updating the "Thread created" message
+        const replyMessage = await interaction.fetchReply();
+        const replyMessageId = replyMessage.id;
+        
         const acceptBtn = new ButtonBuilder()
           .setCustomId(`recruit:accept:${th}:${tagNoHash}`)
           .setStyle(ButtonStyle.Success)
@@ -318,7 +323,7 @@ const command: ChatInputCommand = {
           .setLabel('Settings')
           .setDisabled(th <= 0);
         const closeBtn = new ButtonBuilder()
-          .setCustomId(`recruit:close:${tagNoHash}`)
+          .setCustomId(`recruit:close:${tagNoHash}:${replyMessageId}`)
           .setStyle(ButtonStyle.Danger)
           .setLabel('Close');
         const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, settingsBtn, closeBtn);

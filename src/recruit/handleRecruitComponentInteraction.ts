@@ -34,7 +34,7 @@ function parseCustomId(
   customId: string
 ):
   | { kind: 'accept'; th: number; tagNoHash: string }
-  | { kind: 'close'; tagNoHash: string }
+  | { kind: 'close'; tagNoHash: string; replyMessageId?: string }
   | { kind: 'settings'; th: number; tagNoHash: string }
   | { kind: 'settingsTh'; th: number; tagNoHash: string }
   | { kind: 'settingsRoles'; th: number; tagNoHash: string }
@@ -51,7 +51,8 @@ function parseCustomId(
   }
   if (action === 'close') {
     const tagNoHash = parts[2] ?? '';
-    return { kind: 'close', tagNoHash };
+    const replyMessageId = parts[3];
+    return { kind: 'close', tagNoHash, replyMessageId };
   }
   if (action === 'settings') {
     const th = Number(parts[2]);
@@ -176,7 +177,7 @@ async function handlePick(interaction: StringSelectMenuInteraction, th: number, 
   await interaction.editReply('Ping sent.');
 }
 
-async function handleClose(interaction: ButtonInteraction, tagNoHash: string) {
+async function handleClose(interaction: ButtonInteraction, tagNoHash: string, replyMessageId?: string) {
   if (!interaction.inGuild()) {
     await interaction.reply({ content: 'This can only be used in a server.', ephemeral: true });
     return;
@@ -190,6 +191,25 @@ async function handleClose(interaction: ButtonInteraction, tagNoHash: string) {
   }
 
   await interaction.deferReply({ ephemeral: true });
+
+  // Update the original "Thread created" message to show it's closed
+  if (replyMessageId && interaction.channel?.isThread()) {
+    try {
+      const parentChannel = interaction.channel.parent;
+      if (parentChannel) {
+        const originalMessage = await parentChannel.messages.fetch(replyMessageId).catch(() => null);
+        if (originalMessage && originalMessage.editable) {
+          const threadMention = `<#${interaction.channel.id}>`;
+          // Update with strikethrough for old text and bold for closed status
+          await originalMessage.edit({
+            content: `~~Thread created: ${threadMention}~~\n🔒 **Thread closed:** ${threadMention}`
+          });
+        }
+      }
+    } catch {
+      // ignore if we can't update the original message
+    }
+  }
 
   // Try to remove components from the recruit embed message to prevent further actions.
   try {
@@ -378,7 +398,7 @@ export async function handleRecruitComponentInteraction(interaction: RecruitComp
   }
 
   if (parsed.kind === 'close' && interaction.isButton()) {
-    await handleClose(interaction, parsed.tagNoHash);
+    await handleClose(interaction, parsed.tagNoHash, parsed.replyMessageId);
     return true;
   }
 
