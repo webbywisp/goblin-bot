@@ -1,6 +1,6 @@
 import type { ClientEvent } from '@/events/types';
 import { logger } from '@/utils/logger';
-import { getChatInputCommandMap } from '@/bot/state';
+import { getChatInputCommandMap, getMessageCommandMap } from '@/bot/state';
 import { handleRecruitComponentInteraction } from '@/recruit/handleRecruitComponentInteraction';
 import { handleFamilySettingsComponentInteraction } from '@/family/handleFamilySettingsComponentInteraction';
 import { MessageFlags } from 'discord.js';
@@ -56,6 +56,35 @@ const event: ClientEvent<'interactionCreate'> = {
         }
         return;
       }
+    }
+
+    if (interaction.isMessageContextMenuCommand()) {
+      const command = getMessageCommandMap().get(interaction.commandName);
+      if (!command) {
+        await interaction.reply({
+          content: 'Unknown command. (Try redeploying commands.)',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      try {
+        await command.execute(interaction);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Message command failed');
+
+        const payload = {
+          content: 'Something went wrong while running that command.',
+          flags: MessageFlags.Ephemeral
+        } as const;
+
+        if (interaction.deferred || interaction.replied) {
+          await interaction.followUp(payload);
+        } else {
+          await interaction.reply(payload);
+        }
+      }
+      return;
     }
 
     if (!interaction.isChatInputCommand()) return;
