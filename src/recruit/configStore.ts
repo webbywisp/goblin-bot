@@ -6,6 +6,8 @@ type RecruitGuildConfig = {
   thRoleIds: Record<string, string[]>;
   // Roles allowed to run /recruit (Family Leader role always allowed separately)
   allowedRecruitRoleIds?: string[];
+  // Channel where message-based recruits create threads
+  recruitThreadChannelId?: string;
 };
 
 type RecruitConfigFile = {
@@ -52,6 +54,11 @@ async function save(next: RecruitConfigFile): Promise<void> {
 
 function normalizeRoleIds(roleIds: string[]): string[] {
   return Array.from(new Set(roleIds.filter((r) => typeof r === 'string' && r.trim().length > 0)));
+}
+
+function normalizeChannelId(channelId: string | null | undefined): string | undefined {
+  const cleaned = typeof channelId === 'string' ? channelId.trim() : '';
+  return cleaned.length > 0 ? cleaned : undefined;
 }
 
 function assertTownHall(th: number): asserts th is number {
@@ -143,4 +150,56 @@ export async function getRecruitAllowedRoleSummary(guildId: string): Promise<str
   return ids.length > 0
     ? ids.map((id) => `<@&${id}>`).join(' ')
     : '_No additional roles configured (only Family Leaders can use /recruit)._';
+}
+
+export async function getRecruitThreadChannelId(guildId: string): Promise<string | undefined> {
+  const cfg = await load();
+  const guild = cfg.guilds[guildId];
+  return normalizeChannelId(guild?.recruitThreadChannelId);
+}
+
+export async function setRecruitThreadChannelId(guildId: string, channelId: string | null): Promise<void> {
+  const cleaned = normalizeChannelId(channelId);
+  const cfg = await load();
+  const prevGuild = cfg.guilds[guildId] ?? { thRoleIds: {} };
+
+  const nextGuild: RecruitGuildConfig = {
+    ...prevGuild,
+    thRoleIds: prevGuild.thRoleIds ?? {},
+    allowedRecruitRoleIds: prevGuild.allowedRecruitRoleIds ?? []
+  };
+
+  if (cleaned) {
+    nextGuild.recruitThreadChannelId = cleaned;
+  } else {
+    delete nextGuild.recruitThreadChannelId;
+  }
+
+  const next: RecruitConfigFile = {
+    ...cfg,
+    guilds: {
+      ...cfg.guilds,
+      [guildId]: nextGuild
+    }
+  };
+
+  cached = next;
+  writeChain = writeChain.then(() => save(next));
+  await writeChain;
+}
+
+export async function getRecruitThreadChannelSummary(guildId: string): Promise<string> {
+  const channelId = await getRecruitThreadChannelId(guildId);
+  return channelId ? `<#${channelId}>` : '_Not configured yet._';
+}
+
+export async function findRecruitThreadDestination(): Promise<{ guildId: string; channelId: string } | null> {
+  const cfg = await load();
+  for (const [guildId, guild] of Object.entries(cfg.guilds)) {
+    const channelId = normalizeChannelId(guild.recruitThreadChannelId);
+    if (channelId) {
+      return { guildId, channelId };
+    }
+  }
+  return null;
 }

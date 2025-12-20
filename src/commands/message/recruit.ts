@@ -1,26 +1,72 @@
 import type { MessageCommand } from '@/commands/types';
-import type { MessageContextMenuCommandInteraction } from 'discord.js';
+import { ClashOfClansClient, isValidPlayerTag, normalizePlayerTag } from '@/integrations/clashOfClans/client';
+import { findRecruitThreadDestination } from '@/recruit/configStore';
+import { ensureRecruitThreadFromMessage, populateRecruitThread } from '@/recruit/createRecruitThread';
 import {
   ApplicationCommandType,
   ApplicationIntegrationType,
+  ChannelType,
   ContextMenuCommandBuilder,
-  InteractionContextType
+  InteractionContextType,
+  type Message,
+  type NewsChannel,
+  type TextChannel
 } from 'discord.js';
 
-const MAX_PREVIEW_LENGTH = 1500;
+const TAG_REGEX = /#[0-9A-Z]{3,15}/gi;
 
-function buildMessagePreview(raw: string | undefined): string {
-  if (!raw) {
-    return 'This message has no text content.';
+function extractPlayerTag(message: Message): string | undefined {
+  const sources: string[] = [];
+  if (message.content) sources.push(message.content);
+
+  for (const embed of message.embeds ?? []) {
+    if (embed.title) sources.push(embed.title);
+    if (embed.description) sources.push(embed.description);
+    for (const field of embed.fields ?? []) {
+      if (field.name) sources.push(field.name);
+      if (field.value) sources.push(field.value);
+    }
   }
 
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return 'This message has no text content.';
+  for (const text of sources) {
+    const matches = text.match(TAG_REGEX);
+    if (!matches) continue;
+
+    for (const candidate of matches) {
+      if (isValidPlayerTag(candidate)) {
+        return normalizePlayerTag(candidate);
+      }
+    }
   }
 
-  if (trimmed.length <= MAX_PREVIEW_LENGTH) return trimmed;
-  return `${trimmed.slice(0, MAX_PREVIEW_LENGTH)}…`;
+  return undefined;
+}
+
+function buildSourceSummary(message: Message, invokedBy: string): string {
+  const lines = [
+    `Recruit extracted by ${invokedBy}`,
+    message.guild ? `from ${message.guild.name}` : undefined,
+    message.url ? `Original message: ${message.url}` : undefined
+  ].filter(Boolean);
+
+  return lines.join(' • ');
+}
+
+async function resolveDestinationChannel(client: Message['client']): Promise<{
+  guildName: string;
+  channel: TextChannel | NewsChannel;
+} | null> {
+  const destination = await findRecruitThreadDestination();
+  if (!destination) return null;
+
+  const guild = await client.guilds.fetch(destination.guildId).catch(() => null);
+  if (!guild) return null;
+
+  const channel = await guild.channels.fetch(destination.channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return null;
+  if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) return null;
+
+  return { guildName: guild.name, channel: channel as TextChannel | NewsChannel };
 }
 
 const command: MessageCommand = {
@@ -32,41 +78,60 @@ const command: MessageCommand = {
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
-    const targetMessage = interaction.targetMessage;
-    const preview = buildMessagePreview(targetMessage.cleanContent ?? targetMessage.content);
-    const attachmentUrls = [...targetMessage.attachments.values()].map((attachment) => attachment.url);
-
-    const attachmentSection =
-      attachmentUrls.length > 0 ? `\n\nAttachments:\n${attachmentUrls.map((url) => `• ${url}`).join('\n')}` : '';
-
-    const dmContent = [
-      `Forwarded message from ${targetMessage.author?.tag ?? targetMessage.author?.username ?? 'Unknown user'}`,
-      `Link: ${targetMessage.url}`,
-      '',
-      preview,
-      attachmentSection
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    try {
-      await interaction.user.send({ content: dmContent });
-    } catch (err) {
-      await logDmFailure(err, interaction);
-      await interaction.editReply('I could not send you that DM. Please check your privacy settings and try again.');
+    const destination = await resolveDestinationChannel(interaction.client);
+    if (!destination) {
+      await interaction.editReply(
+        'No recruit destination channel configured. Run /settings in your home server to pick one.'
+      );
       return;
     }
 
-    await interaction.editReply('Check your DMs for that message!');
+    const playerTag = extractPlayerTag(interaction.targetMessage);
+    if (!playerTag) {
+      await interaction.editReply('Could not find a valid player tag in that message.');
+      return;
+    }
+
+    const cocClient = new ClashOfClansClient();
+
+    try {
+      const player = await cocClient.getPlayerByTag(playerTag);
+      const thValue = typeof player.townHallLevel === 'number' && player.townHallLevel > 0 ? player.townHallLevel : '?';
+      const threadName = `${player.name} TH ${thValue} from message`;
+
+      const statusMessage = await destination.channel.send({
+        content: `Creating recruit thread for ${player.name} (tag ${player.tag}) requested by ${interaction.user}.`
+      });
+
+      const thread = await ensureRecruitThreadFromMessage(statusMessage, threadName);
+      if (!thread) {
+        await statusMessage.edit('Failed to create a recruit thread in this channel.');
+        await interaction.editReply('I could not create a thread in the configured channel. Check my permissions.');
+        return;
+      }
+
+      await populateRecruitThread({
+        thread,
+        player,
+        client: cocClient,
+        customBaseId: `recruit:${interaction.id}`,
+        replyMessageId: statusMessage.id
+      });
+
+      const summary = buildSourceSummary(interaction.targetMessage, interaction.user.tag);
+      if (summary) {
+        await thread.send(summary);
+      }
+
+      await statusMessage.edit(`Recruit thread created by ${interaction.user}: <#${thread.id}>`);
+      await interaction.editReply(`Thread created in ${destination.guildName}: <#${thread.id}>`);
+    } catch (err) {
+      const { logger } = await import('@/utils/logger');
+      logger.error({ err, command: 'message/recruit', playerTag }, 'Failed to create recruit thread from message');
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      await interaction.editReply(`Could not create recruit thread: ${msg}`);
+    }
   }
 };
 
 export default command;
-
-async function logDmFailure(err: unknown, interaction: MessageContextMenuCommandInteraction) {
-  const { logger } = await import('@/utils/logger');
-  logger.warn(
-    { err, userId: interaction.user.id, command: interaction.commandName },
-    'Failed to send Recruit message DM'
-  );
-}
