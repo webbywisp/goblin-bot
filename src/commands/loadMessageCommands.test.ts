@@ -5,7 +5,7 @@ describe('loadMessageCommands', () => {
   it('loads built-in message commands', () => {
     const commands = loadMessageCommands();
     const names = commands.map((c) => c.data.name);
-    expect(names).toContain('recruit');
+    expect(names).toContain('Recruit this goblin');
   });
 
   it('returns commands sorted by name', () => {
