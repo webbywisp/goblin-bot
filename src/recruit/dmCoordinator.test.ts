@@ -37,4 +37,9 @@ describe('renderDmTemplate', () => {
     const rendered = renderDmTemplate('Join us: {community_invite_url}', session);
     expect(rendered).toContain('https://discord.gg/example');
   });
+
+  it('renders applicant mention placeholder', () => {
+    const rendered = renderDmTemplate('Hi {applicant_mention}!', baseSession);
+    expect(rendered).toContain(`<@${baseSession.applicantId}>`);
+  });
 });

@@ -6,6 +6,7 @@ import {
   setRecruitDmTemplates,
   setRecruitThreadChannelId
 } from '@/recruit/configStore';
+import { DM_TEMPLATE_PLACEHOLDERS } from '@/recruit/dmCoordinator';
 import { isSettingsAdmin } from '@/settings/permissions';
 import {
   buildRecruitChannelView,
@@ -37,9 +38,6 @@ type SettingsComponentInteraction =
 const TEMPLATE_NAME_INPUT_ID = 'settings_dm_template_name';
 const TEMPLATE_CONTENT_INPUT_ID = 'settings_dm_template_content';
 const TEMPLATE_PLACEHOLDER_HINT_ID = 'settings_dm_template_hint';
-const TEMPLATE_PLACEHOLDER_TEXT =
-  '{player_name}, {player_tag}, {player_townhall}, {recruiter_name}, {guild_name}, {thread_url}, {community_invite_url}, {original_message_url}';
-
 function generateTemplateId(): string {
   return randomBytes(5).toString('hex');
 }
@@ -72,14 +70,16 @@ function buildTemplateModal(mode: 'create' | 'edit', template?: RecruitDmTemplat
     contentInput.setValue(template.content.slice(0, 1800));
   }
 
+  const placeholderText = DM_TEMPLATE_PLACEHOLDERS.map((key) => `{${key}}`).join(', ');
+
   const placeholderInfo = new TextInputBuilder()
     .setCustomId(TEMPLATE_PLACEHOLDER_HINT_ID)
     .setLabel('Available placeholders (read-only)')
     .setStyle(TextInputStyle.Paragraph)
-    .setValue(TEMPLATE_PLACEHOLDER_TEXT)
+    .setValue(placeholderText)
     .setRequired(false)
     .setMinLength(0)
-    .setMaxLength(TEMPLATE_PLACEHOLDER_TEXT.length);
+    .setMaxLength(Math.min(placeholderText.length, 1000));
 
   modal.addComponents(
     new ActionRowBuilder<TextInputBuilder>().addComponents(placeholderInfo),

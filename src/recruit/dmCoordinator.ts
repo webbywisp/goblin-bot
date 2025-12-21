@@ -1,3 +1,8 @@
+import { ClashOfClansClient } from '@/integrations/clashOfClans/client';
+import type { RecruitClanSummary, RecruitDmSession } from '@/recruit/dmSessionStore';
+import { updateRecruitDmSession } from '@/recruit/dmSessionStore';
+import { logger } from '@/utils/logger';
+import { RESTJSONErrorCodes } from 'discord-api-types/v10';
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -6,20 +11,30 @@ import {
   type MessageActionRowComponentBuilder,
   type User
 } from 'discord.js';
-import { RESTJSONErrorCodes } from 'discord-api-types/v10';
-import type { RecruitDmSession, RecruitClanSummary } from '@/recruit/dmSessionStore';
-import { updateRecruitDmSession } from '@/recruit/dmSessionStore';
-import { ClashOfClansClient } from '@/integrations/clashOfClans/client';
-import { logger } from '@/utils/logger';
 
 type RecruiterComponentRow = ActionRowBuilder<MessageActionRowComponentBuilder>;
 
-const TEMPLATE_PLACEHOLDERS: Record<string, (session: RecruitDmSession) => string | undefined> = {
+export const DM_TEMPLATE_PLACEHOLDERS = [
+  'player_name',
+  'player_tag',
+  'player_townhall',
+  'recruiter_name',
+  'applicant_mention',
+  'guild_name',
+  'thread_url',
+  'community_invite_url',
+  'original_message_url'
+] as const;
+
+type PlaceholderKey = (typeof DM_TEMPLATE_PLACEHOLDERS)[number];
+
+const TEMPLATE_PLACEHOLDERS: Record<PlaceholderKey, (session: RecruitDmSession) => string | undefined> = {
   player_name: (session) => session.player.name,
   player_tag: (session) => session.player.tag,
   player_townhall: (session) =>
     typeof session.player.townHallLevel === 'number' ? `TH${session.player.townHallLevel}` : undefined,
   recruiter_name: (session) => session.recruiterTag,
+  applicant_mention: (session) => `<@${session.applicantId}>`,
   guild_name: (session) => session.homeGuildName,
   thread_url: (session) => session.threadUrl,
   community_invite_url: (session) => session.communityInviteUrl ?? session.threadUrl,
@@ -28,9 +43,13 @@ const TEMPLATE_PLACEHOLDERS: Record<string, (session: RecruitDmSession) => strin
 
 export function renderDmTemplate(content: string, session: RecruitDmSession): string {
   return content.replace(/\{([a-z_]+)\}/gi, (match, key) => {
-    const resolver = TEMPLATE_PLACEHOLDERS[key.toLowerCase()];
-    const value = resolver?.(session);
-    return value ?? match;
+    const normalized = key.toLowerCase();
+    if ((DM_TEMPLATE_PLACEHOLDERS as readonly string[]).includes(normalized)) {
+      const resolver = TEMPLATE_PLACEHOLDERS[normalized as PlaceholderKey];
+      const value = resolver?.(session);
+      return value ?? match;
+    }
+    return match;
   });
 }
 
