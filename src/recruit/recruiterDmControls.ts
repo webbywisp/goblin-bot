@@ -29,8 +29,8 @@ function buildManualDmPayload(session: RecruitDmSession, message: string) {
   const header = buildNextContent(session, 'Copy/paste this message:');
 
   return {
-    content: `${header}\n\n${sanitized}`,
-    allowedMentions: { parse: [], users: [] }
+    instructions: header,
+    template: sanitized
   };
 }
 
@@ -72,8 +72,15 @@ export async function handleRecruiterDmComponentInteraction(
     return true;
   }
   const rendered = renderDmTemplate(template.content, session);
+  const { instructions, template: templateText } = buildManualDmPayload(session, rendered);
   await interaction.reply({
-    ...buildManualDmPayload(session, rendered),
+    content: instructions,
+    allowedMentions: { parse: [], users: [] },
+    ephemeral: true
+  });
+  await interaction.followUp({
+    content: templateText,
+    allowedMentions: { parse: [], users: [] },
     ephemeral: true
   });
   return true;
