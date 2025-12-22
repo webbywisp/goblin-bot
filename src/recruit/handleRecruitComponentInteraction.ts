@@ -1,20 +1,20 @@
 import {
-  ActionRowBuilder,
-  PermissionFlagsBits,
-  RoleSelectMenuBuilder,
-  StringSelectMenuBuilder,
-  type AnySelectMenuInteraction,
-  type ButtonInteraction,
-  type RoleSelectMenuInteraction,
-  type StringSelectMenuInteraction,
-  roleMention
-} from 'discord.js';
-import {
   getRecruitRoleIdsForTownHall,
   getRecruitRoleMappingSummary,
   setRecruitRoleIdsForTownHall
 } from '@/recruit/configStore';
 import { clearOpenApplicantThreadByThreadId } from '@/recruit/openApplicantStore';
+import {
+  ActionRowBuilder,
+  PermissionFlagsBits,
+  roleMention,
+  RoleSelectMenuBuilder,
+  StringSelectMenuBuilder,
+  type AnySelectMenuInteraction,
+  type ButtonInteraction,
+  type RoleSelectMenuInteraction,
+  type StringSelectMenuInteraction
+} from 'discord.js';
 
 type RecruitComponentInteraction =
   | ButtonInteraction
@@ -181,7 +181,7 @@ async function handlePick(interaction: StringSelectMenuInteraction, th: number, 
   await interaction.editReply('Ping sent.');
 }
 
-async function handleClose(interaction: ButtonInteraction, tagNoHash: string, replyMessageId?: string) {
+export async function handleClose(interaction: ButtonInteraction, tagNoHash: string, replyMessageId?: string) {
   if (!interaction.inGuild() || !interaction.guildId) {
     await interaction.reply({ content: 'This can only be used in a server.', ephemeral: true });
     return;
@@ -226,7 +226,7 @@ async function handleClose(interaction: ButtonInteraction, tagNoHash: string, re
 
   // Post a closing note before archiving/locking.
   try {
-    await interaction.channel?.send(`Recruit thread closed by ${interaction.user.tag} for \`#${tagNoHash}\`.`);
+    await interaction.channel?.send(`Recruit thread closed by <@${interaction.user.id}> for \`#${tagNoHash}\`.`);
   } catch {
     // ignore
   }
