@@ -109,9 +109,8 @@ jobs:
 
           ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "$SSH_HOST" "mkdir -p '${{ env.DEPLOY_DIR }}'"
 
+          # Sync dist/ (compiled code) - this is built in CI, so we rsync it
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" dist/ "$SSH_HOST":"${{ env.DEPLOY_DIR }}"/dist/
-          rsync -az -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" package.json package-lock.json "$SSH_HOST":"${{ env.DEPLOY_DIR }}"/
-          rsync -az -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" src/data/ "$SSH_HOST":"${{ env.DEPLOY_DIR }}"/src/data/
 
           ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "$SSH_HOST" << ENDSSH
             set -euo pipefail
@@ -158,6 +157,19 @@ jobs:
             : "\${DISCORD_CLIENT_ID:?Missing DISCORD_CLIENT_ID (configure GitHub Secret)}"
 
             cd "\$DEPLOY_PATH"
+            
+            # Initialize git repo if it doesn't exist, or pull latest changes
+            if [ ! -d "\$DEPLOY_PATH/.git" ]; then
+              echo "Initializing git repository..."
+              git init
+              git remote add origin https://github.com/${{ github.repository }}.git || true
+              git fetch origin
+              git checkout -b main origin/main || git checkout -b main origin/master || true
+            else
+              echo "Pulling latest changes from git..."
+              git fetch origin
+              git reset --hard origin/main || git reset --hard origin/master || true
+            fi
 
             # Load nvm and use the correct Node version (same approach as SleepAPI)
             export NVM_DIR="\$HOME/.nvm"
