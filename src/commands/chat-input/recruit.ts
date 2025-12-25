@@ -2,9 +2,9 @@ import type { ChatInputCommand } from '@/commands/types';
 import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
 import { ClashOfClansClient, isValidPlayerTag } from '@/integrations/clashOfClans/client';
 import { getRecruitAllowedRoleIds } from '@/recruit/configStore';
+import { ensureRecruitThreadFromMessage, populateRecruitThread } from '@/recruit/createRecruitThread';
 import { getRoleIdsFromMember } from '@/utils/discordRoles';
 import { SlashCommandBuilder } from 'discord.js';
-import { populateRecruitThread, ensureRecruitThreadFromMessage } from '@/recruit/createRecruitThread';
 
 const command: ChatInputCommand = {
   data: new SlashCommandBuilder()
@@ -79,7 +79,6 @@ const command: ChatInputCommand = {
       const threadName = `${player.name} TH ${thValue} ${source}. @${interaction.user.username}`;
 
       // Reply in-channel, then start a thread from that reply message.
-      await interaction.editReply({ content: `Creating thread for \`${threadName}\`...` });
       const replyMessage = await interaction.fetchReply();
 
       const thread = await ensureRecruitThreadFromMessage(replyMessage, threadName);
