@@ -1,13 +1,15 @@
-import type { ClientEvent } from '@/events/types';
-import { logger } from '@/utils/logger';
 import { getChatInputCommandMap, getMessageCommandMap } from '@/bot/state';
+import { handleCwlComponentInteraction } from '@/cwl/handleCwlComponentInteraction';
+import { handleCwlNavigation } from '@/cwl/handleCwlNavigation';
+import type { ClientEvent } from '@/events/types';
+import { handleApplicantDmInteraction } from '@/recruit/applicantDmInteractions';
 import { handleRecruitComponentInteraction } from '@/recruit/handleRecruitComponentInteraction';
 import { handleRecruiterDmComponentInteraction } from '@/recruit/recruiterDmControls';
-import { handleApplicantDmInteraction } from '@/recruit/applicantDmInteractions';
 import {
   handleSettingsComponentInteraction,
   handleSettingsModalInteraction
 } from '@/settings/handleSettingsComponentInteraction';
+import { logger } from '@/utils/logger';
 import { MessageFlags } from 'discord.js';
 
 const event: ClientEvent<'interactionCreate'> = {
@@ -72,6 +74,25 @@ const event: ClientEvent<'interactionCreate'> = {
           await interaction.reply(payload);
         }
         return;
+      }
+
+      if (interaction.isStringSelectMenu()) {
+        try {
+          const cwlHandled = await handleCwlComponentInteraction(interaction);
+          if (cwlHandled) return;
+        } catch (err) {
+          logger.error({ err, customId: interaction.customId }, 'CWL component interaction failed');
+          // Continue to other handlers
+        }
+      }
+
+      if (interaction.isButton() && interaction.customId.startsWith('cwl:nav:')) {
+        try {
+          const navHandled = await handleCwlNavigation(interaction);
+          if (navHandled) return;
+        } catch (err) {
+          logger.error({ err, customId: interaction.customId }, 'CWL navigation failed');
+        }
       }
 
       try {

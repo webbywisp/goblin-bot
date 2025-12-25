@@ -54,13 +54,17 @@ export type CocWarAttack = {
   stars: number;
   destructionPercentage: number;
   order?: number;
+  duration?: number;
 };
 
 export type CocWarMember = {
   tag: string;
   name: string;
   townhallLevel?: number;
+  mapPosition?: number;
   attacks?: CocWarAttack[];
+  opponentAttacks?: number;
+  bestOpponentAttack?: CocWarAttack;
 };
 
 export type CocClanWarSide = {

@@ -3,9 +3,13 @@ import type { MessageCommand } from '@/commands/types';
 type CommandModule = { default: MessageCommand };
 
 export function loadMessageCommands(): MessageCommand[] {
-  const modules = import.meta.glob<CommandModule>('./message/**/*.ts', {
-    eager: true
-  });
+  // Exclude test files from being loaded
+  const modules = import.meta.glob<CommandModule>(
+    ['./message/**/*.ts', '!./message/**/*.test.ts', '!./message/**/__tests__/**'],
+    {
+      eager: true
+    }
+  );
 
   const commands = Object.values(modules)
     .map((m) => m.default)

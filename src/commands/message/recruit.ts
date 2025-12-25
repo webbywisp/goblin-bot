@@ -16,6 +16,7 @@ import {
   releaseApplicantLock,
   tryLockApplicant
 } from '@/recruit/openApplicantStore';
+import { logger } from '@/utils/logger';
 import type { ActionRowBuilder, MessageActionRowComponentBuilder } from 'discord.js';
 import {
   ApplicationCommandType,
@@ -408,7 +409,6 @@ const command: MessageCommand = {
         components: dmComponents
       });
     } catch (err) {
-      const { logger } = await import('@/utils/logger');
       logger.error({ err, command: 'message/recruit', playerTag }, 'Failed to create recruit thread from message');
       const msg = err instanceof Error ? err.message : 'Unknown error';
       await interaction.editReply(`Could not create recruit thread: ${msg}`);

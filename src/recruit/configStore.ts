@@ -301,6 +301,35 @@ export async function setRecruitDmTemplates(guildId: string, templates: RecruitD
   await writeChain;
 }
 
+export async function setRecruitClans(guildId: string, clans: RecruitClanConfig[]): Promise<void> {
+  const cfg = await load();
+  const prevGuild = cfg.guilds[guildId] ?? { thRoleIds: {} };
+
+  const nextGuild: RecruitGuildConfig = {
+    ...prevGuild,
+    thRoleIds: prevGuild.thRoleIds ?? {}
+  };
+
+  const cleaned = normalizeClans(clans);
+  if (cleaned.length === 0) {
+    delete nextGuild.clans;
+  } else {
+    nextGuild.clans = cleaned;
+  }
+
+  const next: RecruitConfigFile = {
+    ...cfg,
+    guilds: {
+      ...cfg.guilds,
+      [guildId]: nextGuild
+    }
+  };
+
+  cached = next;
+  writeChain = writeChain.then(() => save(next));
+  await writeChain;
+}
+
 export async function findRecruitThreadDestination(): Promise<{ guildId: string; channelId: string } | null> {
   const cfg = await load();
   for (const [guildId, guild] of Object.entries(cfg.guilds)) {

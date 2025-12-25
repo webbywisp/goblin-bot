@@ -16,17 +16,17 @@ async function loadStore() {
 }
 
 describe('openApplicantStore', () => {
-beforeEach(() => {
-  vi.resetModules();
-  mockFs.readFile.mockRejectedValue(new Error('missing'));
-  mockFs.writeFile.mockResolvedValue(undefined);
-  mockFs.rename.mockResolvedValue(undefined);
-  mockFs.mkdir.mockResolvedValue(undefined);
-  mockFs.readFile.mockClear();
-  mockFs.writeFile.mockClear();
-  mockFs.rename.mockClear();
-  mockFs.mkdir.mockClear();
-});
+  beforeEach(() => {
+    vi.resetModules();
+    mockFs.readFile.mockRejectedValue(new Error('missing'));
+    mockFs.writeFile.mockResolvedValue(undefined);
+    mockFs.rename.mockResolvedValue(undefined);
+    mockFs.mkdir.mockResolvedValue(undefined);
+    mockFs.readFile.mockClear();
+    mockFs.writeFile.mockClear();
+    mockFs.rename.mockClear();
+    mockFs.mkdir.mockClear();
+  });
 
   it('prevents duplicate locks until released or cleared', async () => {
     const store = await loadStore();

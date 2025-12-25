@@ -1,5 +1,6 @@
 import {
   getRecruitAllowedRoleSummary,
+  getRecruitClans,
   getRecruitDmTemplates,
   getRecruitRoleMappingSummary,
   getRecruitThreadChannelSummary
@@ -35,6 +36,9 @@ export async function buildSettingsMenuView(guildId: string, leaderRoleId?: stri
     templates.length > 0
       ? `${templates.length} template${templates.length === 1 ? '' : 's'}`
       : '_No templates set yet._';
+  const clans = await getRecruitClans(guildId);
+  const clanSummary =
+    clans.length > 0 ? `${clans.length} clan${clans.length === 1 ? '' : 's'}` : '_No clans configured yet._';
 
   const select = new StringSelectMenuBuilder()
     .setCustomId('settings:menu_select')
@@ -54,6 +58,11 @@ export async function buildSettingsMenuView(guildId: string, leaderRoleId?: stri
         label: 'Recruit DM templates',
         value: 'dm_templates',
         description: 'Customize the copy recruiters paste into DMs'
+      },
+      {
+        label: 'Clans',
+        value: 'clans',
+        description: 'Link clans to the family'
       }
     );
 
@@ -63,7 +72,8 @@ export async function buildSettingsMenuView(guildId: string, leaderRoleId?: stri
       `- Leader role: ${leaderSummary}\n` +
       `- Additional /recruit roles: ${allowedSummary}\n` +
       `- Message recruit channel: ${channelSummary}\n` +
-      `- Recruit DM templates: ${templateSummary}\n\n` +
+      `- Recruit DM templates: ${templateSummary}\n` +
+      `- Clans: ${clanSummary}\n\n` +
       `Select an option below to configure it.`,
     components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)]
   };
@@ -160,6 +170,61 @@ export async function buildRecruitDmTemplatesView(guildId: string): Promise<Sett
 
   return {
     content: `**Recruit DM templates**\n` + `${summary}`,
+    components: rows
+  };
+}
+
+export async function buildClansView(guildId: string): Promise<SettingsView> {
+  const clans = await getRecruitClans(guildId);
+  const hasClans = clans.length > 0;
+  const summary = hasClans
+    ? clans
+        .slice(0, 25)
+        .map((clan, index) => {
+          const name = clan.name || 'Unknown';
+          return `${index + 1}. **${name}** — ${clan.tag}`;
+        })
+        .join('\n')
+    : '_No clans configured yet._';
+
+  const addRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId('settings:clans_add').setLabel('Add clan').setStyle(ButtonStyle.Primary)
+  );
+
+  const rows: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [buildBackRow(), addRow];
+
+  if (hasClans) {
+    const editSelect = new StringSelectMenuBuilder()
+      .setCustomId('settings:clans_edit')
+      .setPlaceholder('Select a clan to edit')
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(
+        clans.slice(0, 25).map((clan) => ({
+          label: (clan.name || clan.tag).slice(0, 100),
+          value: clan.tag,
+          description: clan.tag.slice(0, 100)
+        }))
+      );
+    rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(editSelect));
+
+    const deleteSelect = new StringSelectMenuBuilder()
+      .setCustomId('settings:clans_delete')
+      .setPlaceholder('Select a clan to delete')
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(
+        clans.slice(0, 25).map((clan) => ({
+          label: (clan.name || clan.tag).slice(0, 100),
+          value: clan.tag,
+          description: clan.tag.slice(0, 100)
+        }))
+      );
+    rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(deleteSelect));
+  }
+
+  return {
+    content: `**Clans**\n` + `${summary}\n\n` + `Link clans to the family.`,
     components: rows
   };
 }

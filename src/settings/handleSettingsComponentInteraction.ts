@@ -1,19 +1,24 @@
 import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
-import type { RecruitDmTemplateConfig } from '@/recruit/configStore';
+import { ClashOfClansClient, normalizePlayerTag } from '@/integrations/clashOfClans/client';
+import type { RecruitClanConfig, RecruitDmTemplateConfig } from '@/recruit/configStore';
 import {
+  getRecruitClans,
   getRecruitDmTemplates,
   setRecruitAllowedRoleIds,
+  setRecruitClans,
   setRecruitDmTemplates,
   setRecruitThreadChannelId
 } from '@/recruit/configStore';
 import { DM_TEMPLATE_PLACEHOLDERS } from '@/recruit/dmCoordinator';
 import { isSettingsAdmin } from '@/settings/permissions';
 import {
+  buildClansView,
   buildRecruitChannelView,
   buildRecruitDmTemplatesView,
   buildRecruitRolesView,
   buildSettingsMenuView
 } from '@/settings/views';
+import { logger } from '@/utils/logger';
 import type {
   ButtonInteraction,
   ChannelSelectMenuInteraction,
@@ -38,8 +43,37 @@ type SettingsComponentInteraction =
 const TEMPLATE_NAME_INPUT_ID = 'settings_dm_template_name';
 const TEMPLATE_CONTENT_INPUT_ID = 'settings_dm_template_content';
 const TEMPLATE_PLACEHOLDER_HINT_ID = 'settings_dm_template_hint';
+const CLAN_TAG_INPUT_ID = 'settings_clan_tag';
+
 function generateTemplateId(): string {
   return randomBytes(5).toString('hex');
+}
+
+function buildClanModal(mode: 'create' | 'edit', clan?: RecruitClanConfig): ModalBuilder {
+  const modal = new ModalBuilder()
+    .setCustomId(
+      mode === 'create'
+        ? 'settings:clan_modal:create'
+        : `settings:clan_modal:edit:${encodeURIComponent(clan?.tag ?? '')}`
+    )
+    .setTitle(mode === 'create' ? 'Add clan' : `Edit "${clan?.name ?? clan?.tag ?? 'clan'}"`);
+
+  const tagInput = new TextInputBuilder()
+    .setCustomId(CLAN_TAG_INPUT_ID)
+    .setLabel('Clan tag (name will be fetched automatically)')
+    .setStyle(TextInputStyle.Short)
+    .setMinLength(3)
+    .setMaxLength(20)
+    .setRequired(true)
+    .setPlaceholder('#ABC123');
+
+  if (clan) {
+    tagInput.setValue(clan.tag.slice(0, 20));
+  }
+
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(tagInput));
+
+  return modal;
 }
 
 function buildTemplateModal(mode: 'create' | 'edit', template?: RecruitDmTemplateConfig): ModalBuilder {
@@ -126,7 +160,9 @@ export async function handleSettingsComponentInteraction(interaction: SettingsCo
           ? await buildRecruitChannelView(guildId)
           : selected === 'dm_templates'
             ? await buildRecruitDmTemplatesView(guildId)
-            : await buildSettingsMenuView(guildId, leaderRoleId);
+            : selected === 'clans'
+              ? await buildClansView(guildId)
+              : await buildSettingsMenuView(guildId, leaderRoleId);
     await interaction.update(view);
     return true;
   }
@@ -224,6 +260,58 @@ export async function handleSettingsComponentInteraction(interaction: SettingsCo
     return true;
   }
 
+  if (action === 'clans_add' && interaction.isButton()) {
+    const modal = buildClanModal('create');
+    await interaction.showModal(modal);
+    return true;
+  }
+
+  if (action === 'clans_edit' && interaction.isStringSelectMenu()) {
+    const clanTag = interaction.values?.[0];
+    if (!clanTag) {
+      await interaction.reply({ content: 'Select a clan first.', ephemeral: true });
+      return true;
+    }
+    const clans = await getRecruitClans(guildId);
+    const clan = clans.find((c) => c.tag === clanTag);
+    if (!clan) {
+      await interaction.reply({ content: 'That clan is no longer available.', ephemeral: true });
+      return true;
+    }
+
+    await interaction.showModal(buildClanModal('edit', clan));
+    return true;
+  }
+
+  if (action === 'clans_delete' && interaction.isStringSelectMenu()) {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferUpdate();
+    }
+
+    try {
+      const clanTag = interaction.values?.[0];
+      if (!clanTag) {
+        await interaction.followUp({ content: 'Select a clan first.', ephemeral: true });
+        return true;
+      }
+
+      const clans = await getRecruitClans(guildId);
+      const next = clans.filter((c) => c.tag !== clanTag);
+      if (next.length === clans.length) {
+        await interaction.followUp({ content: 'That clan was already removed.', ephemeral: true });
+        return true;
+      }
+
+      await setRecruitClans(guildId, next);
+      const view = await buildClansView(guildId);
+      await interaction.editReply(view);
+      await interaction.followUp({ content: 'Clan deleted.', ephemeral: true });
+    } catch (err) {
+      await reportSettingsError(interaction, 'Failed to delete clan.', err);
+    }
+    return true;
+  }
+
   return false;
 }
 
@@ -243,10 +331,24 @@ export async function handleSettingsModalInteraction(interaction: ModalSubmitInt
     return true;
   }
 
-  const [, action, mode, templateId] = interaction.customId.split(':');
-  if (action !== 'dm_template_modal') return false;
-
+  const [, action, mode, id] = interaction.customId.split(':');
   const guildId = interaction.guildId;
+
+  if (action === 'dm_template_modal') {
+    return await handleDmTemplateModal(interaction, mode, id, guildId);
+  }
+  if (action === 'clan_modal') {
+    return await handleClanModal(interaction, mode, id, guildId);
+  }
+  return false;
+}
+
+async function handleDmTemplateModal(
+  interaction: ModalSubmitInteraction,
+  mode: string,
+  templateId: string | undefined,
+  guildId: string
+): Promise<boolean> {
   const name = interaction.fields.getTextInputValue(TEMPLATE_NAME_INPUT_ID)?.trim();
   const content = interaction.fields.getTextInputValue(TEMPLATE_CONTENT_INPUT_ID)?.trim();
 
@@ -293,6 +395,84 @@ export async function handleSettingsModalInteraction(interaction: ModalSubmitInt
   return true;
 }
 
+async function handleClanModal(
+  interaction: ModalSubmitInteraction,
+  mode: string,
+  oldTag: string | undefined,
+  guildId: string
+): Promise<boolean> {
+  const tag = interaction.fields.getTextInputValue(CLAN_TAG_INPUT_ID)?.trim();
+
+  if (!tag) {
+    await interaction.reply({ content: 'Clan tag is required.', ephemeral: true });
+    return true;
+  }
+
+  // Normalize tag
+  const normalizedTag = normalizePlayerTag(tag);
+  if (!normalizedTag || normalizedTag === '#') {
+    await interaction.reply({ content: 'Invalid clan tag format.', ephemeral: true });
+    return true;
+  }
+
+  try {
+    await interaction.deferReply({ ephemeral: true });
+
+    // Fetch clan info from API to get the name
+    const client = new ClashOfClansClient();
+    let clanName: string | undefined;
+    try {
+      const clan = await client.getClanByTag(normalizedTag);
+      clanName = clan.name;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      await interaction.editReply({
+        content: `Failed to fetch clan info from Clash of Clans API: ${errorMsg}\n\nPlease verify the clan tag is correct.`
+      });
+      return true;
+    }
+
+    const current = await getRecruitClans(guildId);
+    const clans = [...current];
+
+    if (mode === 'create') {
+      // Check if tag already exists
+      if (clans.some((c) => c.tag === normalizedTag)) {
+        await interaction.editReply({ content: 'A clan with that tag already exists.' });
+        return true;
+      }
+      clans.push({ tag: normalizedTag, name: clanName });
+    } else if (mode === 'edit' && oldTag) {
+      const decodedOldTag = decodeURIComponent(oldTag);
+      const index = clans.findIndex((c) => c.tag === decodedOldTag);
+      if (index === -1) {
+        await interaction.editReply({ content: 'That clan no longer exists.' });
+        return true;
+      }
+      // If tag changed, check for duplicates
+      if (normalizedTag !== decodedOldTag && clans.some((c) => c.tag === normalizedTag)) {
+        await interaction.editReply({ content: 'A clan with that tag already exists.' });
+        return true;
+      }
+      clans[index] = { tag: normalizedTag, name: clanName };
+    } else {
+      await interaction.editReply({ content: 'Unknown clan action.' });
+      return true;
+    }
+
+    await setRecruitClans(guildId, clans);
+    const view = await buildClansView(guildId);
+    await interaction.editReply({
+      content: `✅ Clan saved: **${clanName}** (${normalizedTag})\n\n${view.content}`,
+      components: view.components
+    });
+  } catch (err) {
+    await reportSettingsError(interaction, 'Failed to save clan.', err);
+  }
+
+  return true;
+}
+
 async function reportSettingsError(
   interaction:
     | RoleSelectMenuInteraction
@@ -303,7 +483,6 @@ async function reportSettingsError(
   message: string,
   err: unknown
 ) {
-  const { logger } = await import('@/utils/logger');
   logger.error({ err, customId: interaction.customId, guildId: interaction.guildId }, 'Settings interaction failed');
 
   const payload = {

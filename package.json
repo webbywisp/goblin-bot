@@ -10,7 +10,7 @@
     "dev": "npx vite-node --watch src/index.ts",
     "build": "tsc --noEmit && vite build --ssr src/index.ts",
     "start": "node dist/index.js",
-    "deploy": "npx vite-node scripts/deploy-commands.ts",
+    "deploy": "NODE_ENV=production npx vite-node --config vite.deploy.config.ts scripts/deploy-commands.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "npm run eslint-check && npm run prettier-check",

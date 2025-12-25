@@ -140,3 +140,4 @@ vite.config.ts.timestamp-*
 recruit-config.json
 
 tmp
+.DS_Store
