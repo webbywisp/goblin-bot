@@ -210,7 +210,7 @@ export async function getRecruitAllowedRoleSummary(guildId: string): Promise<str
   const ids = await getRecruitAllowedRoleIds(guildId);
   return ids.length > 0
     ? ids.map((id) => `<@&${id}>`).join(' ')
-    : '_No additional roles configured (only Family Leaders can use /recruit)._';
+    : '_No leader roles configured (only owners can use /recruit)._';
 }
 
 export async function getRecruitThreadChannelId(guildId: string): Promise<string | undefined> {

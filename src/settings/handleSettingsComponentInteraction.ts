@@ -10,7 +10,7 @@ import {
   setRecruitThreadChannelId
 } from '@/recruit/configStore';
 import { DM_TEMPLATE_PLACEHOLDERS } from '@/recruit/dmCoordinator';
-import { isSettingsAdmin } from '@/settings/permissions';
+import { canManageSettings } from '@/settings/permissions';
 import {
   buildClansView,
   buildRecruitChannelView,
@@ -134,10 +134,10 @@ export async function handleSettingsComponentInteraction(interaction: SettingsCo
     return true;
   }
 
-  if (!isSettingsAdmin(interaction.user.id)) {
+  if (!(await canManageSettings(interaction.user.id, interaction.member, interaction.guildId))) {
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: 'Only the bot maintainer can change settings right now.',
+        content: 'Only owners or leader roles can change settings.',
         ephemeral: true
       });
     }
@@ -323,9 +323,9 @@ export async function handleSettingsModalInteraction(interaction: ModalSubmitInt
     return true;
   }
 
-  if (!isSettingsAdmin(interaction.user.id)) {
+  if (!(await canManageSettings(interaction.user.id, interaction.member, interaction.guildId))) {
     await interaction.reply({
-      content: 'Only the bot maintainer can change settings right now.',
+      content: 'Only owners or leader roles can change settings.',
       ephemeral: true
     });
     return true;

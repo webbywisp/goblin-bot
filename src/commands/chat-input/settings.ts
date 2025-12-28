@@ -1,6 +1,6 @@
 import type { ChatInputCommand } from '@/commands/types';
 import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
-import { isSettingsAdmin } from '@/settings/permissions';
+import { canManageSettings } from '@/settings/permissions';
 import { buildSettingsMenuView } from '@/settings/views';
 import { SlashCommandBuilder } from 'discord.js';
 
@@ -18,9 +18,9 @@ const command: ChatInputCommand = {
       return;
     }
 
-    if (!isSettingsAdmin(interaction.user.id)) {
+    if (!(await canManageSettings(interaction.user.id, interaction.member, interaction.guildId))) {
       await interaction.reply({
-        content: 'Only the bot maintainer can change settings right now.',
+        content: 'Only owners or leader roles can change settings.',
         ephemeral: true
       });
       return;

@@ -31,7 +31,7 @@ export async function buildSettingsMenuView(guildId: string, leaderRoleId?: stri
   const allowedSummary = await getRecruitAllowedRoleSummary(guildId);
   const channelSummary = await getRecruitThreadChannelSummary(guildId);
   const templates = await getRecruitDmTemplates(guildId);
-  const leaderSummary = leaderRoleId ? `<@&${leaderRoleId}>` : '_Leader role not found in this server._';
+  const leaderSummary = leaderRoleId ? `<@&${leaderRoleId}>` : '_Owner role not found in this server._';
   const templateSummary =
     templates.length > 0
       ? `${templates.length} template${templates.length === 1 ? '' : 's'}`
@@ -45,9 +45,9 @@ export async function buildSettingsMenuView(guildId: string, leaderRoleId?: stri
     .setPlaceholder('Select a setting to configure')
     .addOptions(
       {
-        label: 'Recruit access roles',
+        label: 'Leader roles',
         value: 'recruit_roles',
-        description: 'Choose which roles can run /recruit'
+        description: 'Choose which roles can run /recruit and /settings'
       },
       {
         label: 'Message recruit channel',
@@ -69,8 +69,8 @@ export async function buildSettingsMenuView(guildId: string, leaderRoleId?: stri
   return {
     content:
       `**Settings overview**\n` +
-      `- Leader role: ${leaderSummary}\n` +
-      `- Additional /recruit roles: ${allowedSummary}\n` +
+      `- Owner role: ${leaderSummary}\n` +
+      `- Leader roles: ${allowedSummary}\n` +
       `- Message recruit channel: ${channelSummary}\n` +
       `- Recruit DM templates: ${templateSummary}\n` +
       `- Clans: ${clanSummary}\n\n` +
@@ -82,21 +82,21 @@ export async function buildSettingsMenuView(guildId: string, leaderRoleId?: stri
 export async function buildRecruitRolesView(guildId: string, leaderRoleId?: string): Promise<SettingsView> {
   const recruitSummary = await getRecruitRoleMappingSummary(guildId);
   const allowedSummary = await getRecruitAllowedRoleSummary(guildId);
-  const leaderSummary = leaderRoleId ? `<@&${leaderRoleId}>` : '_Leader role not found in this server._';
+  const leaderSummary = leaderRoleId ? `<@&${leaderRoleId}>` : '_Owner role not found in this server._';
 
   const select = new RoleSelectMenuBuilder()
     .setCustomId('settings:recruit_roles')
-    .setPlaceholder('Select roles allowed to use /recruit')
+    .setPlaceholder('Select roles allowed to use /recruit and /settings')
     .setMinValues(0)
     .setMaxValues(25);
 
   return {
     content:
-      `**Recruit access roles**\n` +
-      `- Leader role: ${leaderSummary}\n` +
+      `**Leader roles**\n` +
+      `- Owner role: ${leaderSummary}\n` +
       `- Recruit leader role mapping:\n${recruitSummary}\n\n` +
-      `- Additional /recruit roles: ${allowedSummary}\n\n` +
-      `Family Leaders always have access. Select additional roles below if you need more teams to run /recruit.`,
+      `- Leader roles: ${allowedSummary}\n\n` +
+      `Owners always have access. Select additional roles below if you need more teams to run /recruit and /settings.`,
     components: [buildBackRow(), new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(select)]
   };
 }
