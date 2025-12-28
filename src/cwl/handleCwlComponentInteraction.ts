@@ -27,13 +27,17 @@ type CachedMember = {
     stars: number;
     defenderTag: string;
     defenderTownHall?: number;
+    defenderMapPosition?: number;
     wasHigherTh: boolean;
+    bonusAwarded: boolean; // Whether bonus points were actually awarded
     wasMirror: boolean;
   }>;
   defenseDetails: Array<{
     warIndex: number;
     opponentName: string;
     starsDefended: number;
+    attackerTownHall?: number;
+    attackerMapPosition?: number;
   }>;
 };
 
@@ -372,6 +376,8 @@ async function showMemberInspection(
     .setDescription(`**${clanName}** • ${th}`)
     .setColor(member.disqualified ? 0xff0000 : member.flaggedForReview ? 0xff9900 : 0x00ae86);
 
+  const memberTh = member.townHallLevel || 0;
+
   // Summary
   embed.addFields({
     name: '📊 Summary',
@@ -396,13 +402,23 @@ async function showMemberInspection(
     const attackBreakdown = member.attackDetails
       .map((attack) => {
         const basePoints = attack.stars * 2;
-        const thBonus = attack.wasHigherTh ? attack.stars : 0;
+        const thBonus = attack.bonusAwarded ? attack.stars : 0;
         const totalPoints = basePoints + thBonus;
         const mirrorMark = attack.wasMirror ? ' 🪞' : '';
-        const thMark = attack.wasHigherTh ? ' ⬆️' : '';
+        const thMark = attack.bonusAwarded ? ' ⬆️' : '';
+        // Show "*rushed*" if defender is higher TH but bonus wasn't awarded (lower THs above)
+        const rushedMark = attack.wasHigherTh && !attack.bonusAwarded ? ' *rushed*' : '';
+        const defenderInfo =
+          attack.defenderMapPosition !== undefined && attack.defenderTownHall
+            ? ` (Pos ${attack.defenderMapPosition}, TH${attack.defenderTownHall}${rushedMark})`
+            : attack.defenderTownHall
+              ? ` (TH${attack.defenderTownHall}${rushedMark})`
+              : attack.defenderMapPosition !== undefined
+                ? ` (Pos ${attack.defenderMapPosition}${rushedMark})`
+                : '';
         return (
           `**War ${attack.warIndex + 1}** vs ${attack.opponentName}${mirrorMark}\n` +
-          `   ${attack.stars}⭐ → ${totalPoints} pts (${basePoints} base${thBonus > 0 ? ` + ${thBonus} TH bonus${thMark}` : ''})`
+          `   ${attack.stars}⭐${defenderInfo} → **${totalPoints} pts** (${basePoints} base${thBonus > 0 ? ` + ${thBonus} TH bonus${thMark}` : ''})`
         );
       })
       .join('\n');
@@ -419,10 +435,28 @@ async function showMemberInspection(
   if (member.defenseDetails.length > 0) {
     const defenseBreakdown = member.defenseDetails
       .map((defense) => {
-        const points = defense.starsDefended * 2;
+        // If not attacked (starsDefended === 3 and no attackerTownHall), award 2 points
+        const wasNotAttacked = defense.starsDefended === 3 && defense.attackerTownHall === undefined;
+        // Points are only awarded if attacker TH >= defender TH (for attacks) OR if not attacked at all
+        const pointsAwarded =
+          wasNotAttacked ||
+          (defense.starsDefended > 0 &&
+            defense.starsDefended < 3 &&
+            defense.attackerTownHall !== undefined &&
+            defense.attackerTownHall >= memberTh);
+        const points = wasNotAttacked ? 2 : pointsAwarded ? defense.starsDefended * 2 : 0;
+        const attackerInfo =
+          defense.attackerMapPosition !== undefined && defense.attackerTownHall
+            ? ` (Attacked by Pos ${defense.attackerMapPosition}, TH${defense.attackerTownHall})`
+            : defense.attackerTownHall
+              ? ` (Attacked by TH${defense.attackerTownHall})`
+              : defense.attackerMapPosition !== undefined
+                ? ` (Attacked by Pos ${defense.attackerMapPosition})`
+                : '';
+        // Show actual stars defended, even if points are 0 (due to TH mismatch or 3-starred)
         return (
           `**War ${defense.warIndex + 1}** vs ${defense.opponentName}\n` +
-          `   ${defense.starsDefended}⭐ defended → ${points} pts`
+          `   ${defense.starsDefended}⭐ defended → **${points} pts**${attackerInfo}`
         );
       })
       .join('\n');

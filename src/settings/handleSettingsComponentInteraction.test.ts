@@ -1,10 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type {
-  ButtonInteraction,
-  RoleSelectMenuInteraction,
-  StringSelectMenuInteraction,
-  ModalSubmitInteraction
-} from 'discord.js';
+import type { ButtonInteraction, StringSelectMenuInteraction, ModalSubmitInteraction } from 'discord.js';
 import {
   handleSettingsComponentInteraction,
   handleSettingsModalInteraction
@@ -31,7 +26,7 @@ const mockBuildSettingsMenuView = vi.mocked(buildSettingsMenuView);
 const mockBuildRecruitRolesView = vi.mocked(buildRecruitRolesView);
 
 describe('handleSettingsComponentInteraction', () => {
-  const createMockInteraction = (overrides: Partial<ButtonInteraction> = {}) => {
+  const createMockInteraction = (overrides: Record<string, unknown> = {}) => {
     return {
       customId: 'settings:test',
       inGuild: vi.fn().mockReturnValue(true),
@@ -73,21 +68,21 @@ describe('handleSettingsComponentInteraction', () => {
     const interaction = createMockInteraction({
       customId: 'not-settings:test'
     });
-    const result = await handleSettingsComponentInteraction(interaction as any);
+    const result = await handleSettingsComponentInteraction(interaction as ButtonInteraction);
     expect(result).toBe(false);
     expect(mockCanManageSettings).not.toHaveBeenCalled();
   });
 
   it('rejects when not in guild', async () => {
     const interaction = createMockInteraction({
-      inGuild: vi.fn().mockReturnValue(false),
+      inGuild: vi.fn().mockReturnValue(false) as unknown as () => this is ButtonInteraction<'cached' | 'raw'>,
       guild: null,
       guildId: null
     });
     const replyMock = vi.fn().mockResolvedValue(undefined);
     interaction.reply = replyMock;
 
-    const result = await handleSettingsComponentInteraction(interaction as any);
+    const result = await handleSettingsComponentInteraction(interaction as ButtonInteraction);
 
     expect(result).toBe(true);
     expect(replyMock).toHaveBeenCalledWith({
@@ -97,12 +92,12 @@ describe('handleSettingsComponentInteraction', () => {
   });
 
   it('rejects when user cannot manage settings', async () => {
-    const interaction = createMockInteraction();
+    const interaction = createMockInteraction() as unknown as ButtonInteraction;
     mockCanManageSettings.mockResolvedValue(false);
     const replyMock = vi.fn().mockResolvedValue(undefined);
     interaction.reply = replyMock;
 
-    const result = await handleSettingsComponentInteraction(interaction as any);
+    const result = await handleSettingsComponentInteraction(interaction);
 
     expect(result).toBe(true);
     expect(mockCanManageSettings).toHaveBeenCalledWith('user123', interaction.member, 'guild123');
@@ -120,18 +115,23 @@ describe('handleSettingsComponentInteraction', () => {
     const replyMock = vi.fn().mockResolvedValue(undefined);
     interaction.reply = replyMock;
 
-    const result = await handleSettingsComponentInteraction(interaction as any);
+    const result = await handleSettingsComponentInteraction(interaction as ButtonInteraction);
 
     expect(result).toBe(true);
     expect(replyMock).not.toHaveBeenCalled();
   });
 
   it('handles menu_select action', async () => {
-    const interaction = createMockInteraction({
+    const baseInteraction = createMockInteraction({
       customId: 'settings:menu_select',
-      isStringSelectMenu: vi.fn().mockReturnValue(true),
+      isStringSelectMenu: vi.fn().mockReturnValue(true) as unknown as () => this is StringSelectMenuInteraction,
       values: ['recruit_roles']
-    }) as unknown as StringSelectMenuInteraction;
+    });
+    const interaction = {
+      ...baseInteraction,
+      isStringSelectMenu: vi.fn().mockReturnValue(true) as unknown as () => this is StringSelectMenuInteraction,
+      values: ['recruit_roles']
+    } as unknown as StringSelectMenuInteraction;
     mockCanManageSettings.mockResolvedValue(true);
     const updateMock = vi.fn().mockResolvedValue(undefined);
     interaction.update = updateMock;
@@ -144,15 +144,19 @@ describe('handleSettingsComponentInteraction', () => {
   });
 
   it('handles back button action', async () => {
-    const interaction = createMockInteraction({
+    const baseInteraction = createMockInteraction({
       customId: 'settings:back',
-      isButton: vi.fn().mockReturnValue(true)
+      isButton: vi.fn().mockReturnValue(true) as unknown as () => this is ButtonInteraction
     });
+    const interaction = {
+      ...baseInteraction,
+      isButton: vi.fn().mockReturnValue(true) as unknown as () => this is ButtonInteraction
+    } as unknown as ButtonInteraction;
     mockCanManageSettings.mockResolvedValue(true);
     const updateMock = vi.fn().mockResolvedValue(undefined);
     interaction.update = updateMock;
 
-    const result = await handleSettingsComponentInteraction(interaction as any);
+    const result = await handleSettingsComponentInteraction(interaction);
 
     expect(result).toBe(true);
     expect(mockBuildSettingsMenuView).toHaveBeenCalledWith('guild123', FAMILY_LEADER_ROLE_ID);
@@ -161,7 +165,7 @@ describe('handleSettingsComponentInteraction', () => {
 });
 
 describe('handleSettingsModalInteraction', () => {
-  const createMockModalInteraction = (overrides: Partial<ModalSubmitInteraction> = {}) => {
+  const createMockModalInteraction = (overrides: Record<string, unknown> = {}) => {
     return {
       customId: 'settings:test:mode:id',
       inGuild: vi.fn().mockReturnValue(true),
@@ -185,19 +189,19 @@ describe('handleSettingsModalInteraction', () => {
     const interaction = createMockModalInteraction({
       customId: 'not-settings:test'
     });
-    const result = await handleSettingsModalInteraction(interaction);
+    const result = await handleSettingsModalInteraction(interaction as ModalSubmitInteraction);
     expect(result).toBe(false);
   });
 
   it('rejects when not in guild', async () => {
     const interaction = createMockModalInteraction({
-      inGuild: vi.fn().mockReturnValue(false),
+      inGuild: vi.fn().mockReturnValue(false) as unknown as () => this is ModalSubmitInteraction<'cached' | 'raw'>,
       guildId: null
     });
     const replyMock = vi.fn().mockResolvedValue(undefined);
     interaction.reply = replyMock;
 
-    const result = await handleSettingsModalInteraction(interaction);
+    const result = await handleSettingsModalInteraction(interaction as ModalSubmitInteraction);
 
     expect(result).toBe(true);
     expect(replyMock).toHaveBeenCalledWith({
@@ -212,7 +216,7 @@ describe('handleSettingsModalInteraction', () => {
     const replyMock = vi.fn().mockResolvedValue(undefined);
     interaction.reply = replyMock;
 
-    const result = await handleSettingsModalInteraction(interaction);
+    const result = await handleSettingsModalInteraction(interaction as ModalSubmitInteraction);
 
     expect(result).toBe(true);
     expect(mockCanManageSettings).toHaveBeenCalledWith('user123', interaction.member, 'guild123');

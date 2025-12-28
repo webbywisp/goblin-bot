@@ -42,13 +42,17 @@ type MemberStats = {
     stars: number;
     defenderTag: string;
     defenderTownHall?: number;
+    defenderMapPosition?: number;
     wasHigherTh: boolean;
+    bonusAwarded: boolean; // Whether bonus points were actually awarded
     wasMirror: boolean;
   }>;
   defenseDetails: Array<{
     warIndex: number;
     opponentName: string;
     starsDefended: number;
+    attackerTownHall?: number;
+    attackerMapPosition?: number;
   }>;
 };
 
@@ -369,7 +373,7 @@ export async function calculateClanBonusMedals(
       // Use cached wars - day numbers (1-7) correspond to rounds (0-6)
       // Sort by day to ensure correct order
       // Deduplicate wars by endTime to avoid processing the same war multiple times
-      const sortedDays = Array.from(cachedWars.keys()).sort((a, b) => a - b);
+      const sortedDays = Array.from(cachedWars.keys()).sort((a: number, b: number) => a - b);
       const seenEndTimes = new Set<string>();
 
       for (let i = 0; i < sortedDays.length; i++) {
@@ -442,7 +446,7 @@ export async function calculateClanBonusMedals(
         const cachedWars = await loadCachedWarsForMonth(clanTag, dateKey);
         if (cachedWars.size > 0) {
           // Process cached wars (same logic as above)
-          const sortedDays = Array.from(cachedWars.keys()).sort((a, b) => a - b);
+          const sortedDays = Array.from(cachedWars.keys()).sort((a: number, b: number) => a - b);
           const seenEndTimes = new Set<string>();
 
           for (let i = 0; i < sortedDays.length; i++) {
@@ -580,6 +584,10 @@ export async function calculateClanBonusMedals(
       }
 
       const stats = memberStatsMap.get(tag)!;
+      // Update townHallLevel in case it changed between wars
+      if (member.townhallLevel) {
+        stats.townHallLevel = member.townhallLevel;
+      }
       const memberTownHall = member.townhallLevel || 0;
       const memberMapPosition = member.mapPosition;
 
@@ -602,6 +610,7 @@ export async function calculateClanBonusMedals(
           // Find defender's townhall level
           const defender = theirSide.members.find((m) => m.tag === attack.defenderTag);
           const defenderTownHall = defender?.townhallLevel || 0;
+          const defenderMapPosition = defender?.mapPosition;
           const wasHigherTh = defenderTownHall > memberTownHall;
 
           // Check mirror rule (member at mapPosition N should attack opponent at mapPosition N)
@@ -613,8 +622,29 @@ export async function calculateClanBonusMedals(
             stats.mirrorAttacks.add(index);
           }
 
-          // Calculate points: +2 per star, +1 bonus per star if higher TH
-          const attackPoints = stars * 2 + (wasHigherTh ? stars : 0);
+          // Check if bonus points should be awarded
+          // Bonus points only if: defender is higher TH AND no lower THs above defender's position
+          let shouldAwardBonus = false;
+          if (wasHigherTh && defenderMapPosition !== undefined) {
+            const defenderPos = defenderMapPosition;
+            // Check all opponents above (lower map position = higher in war) the defender
+            // If any have TH < defender TH, don't award bonus
+            shouldAwardBonus = true;
+            for (const opponentMember of theirSide.members) {
+              const opponentMapPos = opponentMember.mapPosition;
+              if (
+                opponentMapPos !== undefined &&
+                opponentMapPos < defenderPos &&
+                (opponentMember.townhallLevel || 0) < defenderTownHall
+              ) {
+                shouldAwardBonus = false;
+                break;
+              }
+            }
+          }
+
+          // Calculate points: +2 per star, +1 bonus per star if higher TH and no rushed bases above
+          const attackPoints = stars * 2 + (shouldAwardBonus ? stars : 0);
           stats.totalPoints += attackPoints;
 
           stats.attackDetails.push({
@@ -623,7 +653,9 @@ export async function calculateClanBonusMedals(
             stars,
             defenderTag: attack.defenderTag,
             defenderTownHall: defenderTownHall || undefined,
+            defenderMapPosition: defenderMapPosition,
             wasHigherTh,
+            bonusAwarded: shouldAwardBonus,
             wasMirror
           });
         }
@@ -638,32 +670,62 @@ export async function calculateClanBonusMedals(
       // Look for attacks from opponent side against this member
       // Track the maximum stars lost from any single attack (best attack against this base)
       let maxStarsLost = 0;
-      let wasAttacked = false;
+      let wasAttackedThisWar = false;
+      let attackerTownHall = 0; // Track TH level of attacker who caused max stars lost
+      let attackerMapPosition: number | undefined; // Track position of attacker who caused max stars lost
 
-      for (const opponentMember of theirSide.members) {
-        if (opponentMember.attacks) {
-          for (const attack of opponentMember.attacks) {
-            if (attack.defenderTag === tag) {
-              wasAttacked = true;
-              const stars = attack.stars || 0;
-              // Track the worst attack (most stars lost)
-              maxStarsLost = Math.max(maxStarsLost, stars);
+      // Only check for attacks if theirSide has members
+      if (theirSide.members && theirSide.members.length > 0) {
+        for (const opponentMember of theirSide.members) {
+          if (opponentMember?.attacks && opponentMember.attacks.length > 0) {
+            for (const attack of opponentMember.attacks) {
+              if (attack?.defenderTag === tag) {
+                wasAttackedThisWar = true;
+                const stars = attack.stars || 0;
+                // Track the worst attack (most stars lost) and the attacker's TH level and position
+                if (stars > maxStarsLost) {
+                  maxStarsLost = stars;
+                  attackerTownHall = opponentMember.townhallLevel || 0;
+                  attackerMapPosition = opponentMember.mapPosition;
+                } else if (stars === maxStarsLost) {
+                  // If multiple attacks have the same max stars, use the highest attacker TH
+                  const currentTh = opponentMember.townhallLevel || 0;
+                  if (currentTh > attackerTownHall) {
+                    attackerTownHall = currentTh;
+                    attackerMapPosition = opponentMember.mapPosition;
+                  }
+                }
+              }
             }
           }
         }
       }
 
       // Calculate stars defended: 3 - max stars lost from any attack
-      // If not attacked at all, count as 3 stars defended (perfect defense)
-      const starsDefended = wasAttacked ? Math.max(0, 3 - maxStarsLost) : 3;
-
-      if (starsDefended > 0) {
-        // +2 points per defense star
-        stats.totalPoints += starsDefended * 2;
+      // If not attacked at all in this war, award 2 points (not 6 like before)
+      if (!wasAttackedThisWar) {
+        // Award 2 points per war when not attacked
+        stats.totalPoints += 2;
         stats.defenseDetails.push({
           warIndex: index,
           opponentName,
-          starsDefended
+          starsDefended: 3 // Defended all 3 stars since not attacked
+        });
+      } else {
+        const starsDefended = Math.max(0, 3 - maxStarsLost);
+        // Only award defense points if attacker had at least the same TH level as defender
+        if (starsDefended > 0 && attackerTownHall >= memberTownHall) {
+          // +2 points per defense star
+          stats.totalPoints += starsDefended * 2;
+        }
+        // Always record defense details with actual stars defended, even if no points awarded
+        // This allows users to see who attacked them and how many stars were defended
+        stats.defenseDetails.push({
+          warIndex: index,
+          opponentName,
+          starsDefended,
+          attackerTownHall: attackerTownHall > 0 ? attackerTownHall : undefined,
+          attackerMapPosition
         });
       }
     }
@@ -671,6 +733,7 @@ export async function calculateClanBonusMedals(
 
   // Normalize points and check disqualifications
   const members = Array.from(memberStatsMap.values());
+
   for (const member of members) {
     if (member.totalAttacks > 0) {
       member.normalizedPoints = member.totalPoints / member.totalAttacks;

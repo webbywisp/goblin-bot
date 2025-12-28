@@ -5,10 +5,12 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Resolve data directory relative to the dist file location
-// In production, dist/index.js is the entry point, so we go up from dist/ to project root
-const distDir = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(distDir, '..');
+// Resolve data directory relative to the file location
+// In production: dist/cwl/cwlDataCache.js -> go up 2 levels to project root -> src/data
+// In development: src/cwl/cwlDataCache.ts -> go up 2 levels to project root -> src/data
+const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
+// Go up 2 levels from current file (dist/cwl or src/cwl) to project root, then to src/data
+const projectRoot = path.resolve(currentFileDir, '..', '..');
 const DATA_DIR = path.resolve(projectRoot, 'src', 'data');
 
 /**

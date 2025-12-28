@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRecruitAllowedRoleIds } from '@/recruit/configStore';
 import { getRoleIdsFromMember } from '@/utils/discordRoles';
 import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
+import type { GuildMember, APIInteractionGuildMember } from 'discord.js';
 
 // Mock dependencies
 vi.mock('@/recruit/configStore', () => ({
@@ -107,7 +108,11 @@ describe('canManageSettings', () => {
     const member = createMockMember([FAMILY_LEADER_ROLE_ID, 'other-role']);
     mockGetRoleIdsFromMember.mockReturnValue(new Set([FAMILY_LEADER_ROLE_ID, 'other-role']));
 
-    const result = await canManageSettings('regular-user', member as any, 'guild123');
+    const result = await canManageSettings(
+      'regular-user',
+      member as GuildMember | APIInteractionGuildMember,
+      'guild123'
+    );
     expect(result).toBe(true);
     // When Family Leader role is present, it returns early and doesn't call getRecruitAllowedRoleIds
     expect(mockGetRecruitAllowedRoleIds).not.toHaveBeenCalled();
@@ -120,7 +125,11 @@ describe('canManageSettings', () => {
     mockGetRoleIdsFromMember.mockReturnValue(new Set(['leader-role-1', 'other-role']));
     mockGetRecruitAllowedRoleIds.mockResolvedValue(['leader-role-1', 'leader-role-2']);
 
-    const result = await canManageSettings('regular-user', member as any, 'guild123');
+    const result = await canManageSettings(
+      'regular-user',
+      member as GuildMember | APIInteractionGuildMember,
+      'guild123'
+    );
     expect(result).toBe(true);
     expect(mockGetRecruitAllowedRoleIds).toHaveBeenCalledWith('guild123');
   });
@@ -132,7 +141,11 @@ describe('canManageSettings', () => {
     mockGetRoleIdsFromMember.mockReturnValue(new Set(['regular-role']));
     mockGetRecruitAllowedRoleIds.mockResolvedValue(['leader-role-1', 'leader-role-2']);
 
-    const result = await canManageSettings('regular-user', member as any, 'guild123');
+    const result = await canManageSettings(
+      'regular-user',
+      member as GuildMember | APIInteractionGuildMember,
+      'guild123'
+    );
     expect(result).toBe(false);
   });
 
@@ -143,7 +156,11 @@ describe('canManageSettings', () => {
     mockGetRoleIdsFromMember.mockReturnValue(new Set(['regular-role']));
     mockGetRecruitAllowedRoleIds.mockResolvedValue([]);
 
-    const result = await canManageSettings('regular-user', member as any, 'guild123');
+    const result = await canManageSettings(
+      'regular-user',
+      member as GuildMember | APIInteractionGuildMember,
+      'guild123'
+    );
     expect(result).toBe(false);
   });
 
@@ -154,7 +171,11 @@ describe('canManageSettings', () => {
     mockGetRoleIdsFromMember.mockReturnValue(new Set([FAMILY_LEADER_ROLE_ID]));
     mockGetRecruitAllowedRoleIds.mockResolvedValue([]);
 
-    const result = await canManageSettings('regular-user', member as any, 'guild123');
+    const result = await canManageSettings(
+      'regular-user',
+      member as GuildMember | APIInteractionGuildMember,
+      'guild123'
+    );
     expect(result).toBe(true);
     // When Family Leader role is present, it returns early and doesn't call getRecruitAllowedRoleIds
     expect(mockGetRecruitAllowedRoleIds).not.toHaveBeenCalled();
@@ -165,7 +186,7 @@ describe('canManageSettings', () => {
     const { canManageSettings } = await importFreshPermissionsModule();
     const member = {
       roles: ['leader-role-1']
-    } as any;
+    } as unknown as APIInteractionGuildMember;
     mockGetRoleIdsFromMember.mockReturnValue(new Set(['leader-role-1']));
     mockGetRecruitAllowedRoleIds.mockResolvedValue(['leader-role-1']);
 

@@ -1,9 +1,9 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { ChatInputCommandInteraction } from 'discord.js';
 import settingsCommand from '@/commands/chat-input/settings';
+import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
 import { canManageSettings } from '@/settings/permissions';
 import { buildSettingsMenuView } from '@/settings/views';
-import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
+import type { ChatInputCommandInteraction } from 'discord.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies
 vi.mock('@/settings/permissions', () => ({
@@ -18,7 +18,7 @@ const mockCanManageSettings = vi.mocked(canManageSettings);
 const mockBuildSettingsMenuView = vi.mocked(buildSettingsMenuView);
 
 describe('/settings command', () => {
-  const createMockInteraction = (overrides: Partial<ChatInputCommandInteraction> = {}) => {
+  const createMockInteraction = (overrides: Record<string, unknown> = {}) => {
     return {
       inGuild: vi.fn().mockReturnValue(true),
       guild: {
@@ -53,7 +53,7 @@ describe('/settings command', () => {
 
   it('rejects when not in guild', async () => {
     const interaction = createMockInteraction({
-      inGuild: vi.fn().mockReturnValue(false)
+      inGuild: vi.fn().mockReturnValue(false) as unknown as () => this is ChatInputCommandInteraction<'cached' | 'raw'>
     });
     const replyMock = vi.fn().mockResolvedValue(undefined);
     interaction.reply = replyMock;
@@ -114,7 +114,7 @@ describe('/settings command', () => {
           fetch: vi.fn().mockResolvedValue(null)
         }
       }
-    } as any);
+    });
     mockCanManageSettings.mockResolvedValue(true);
     const deferReplyMock = vi.fn().mockResolvedValue(undefined);
     const editReplyMock = vi.fn().mockResolvedValue(undefined);
@@ -139,7 +139,7 @@ describe('/settings command', () => {
           fetch: vi.fn().mockResolvedValue(leaderRole)
         }
       }
-    } as any);
+    });
     mockCanManageSettings.mockResolvedValue(true);
     const deferReplyMock = vi.fn().mockResolvedValue(undefined);
     const editReplyMock = vi.fn().mockResolvedValue(undefined);
@@ -148,7 +148,7 @@ describe('/settings command', () => {
 
     await settingsCommand.execute(interaction);
 
-    expect(interaction.guild.roles.fetch).toHaveBeenCalledWith(FAMILY_LEADER_ROLE_ID);
+    expect(interaction.guild?.roles.fetch).toHaveBeenCalledWith(FAMILY_LEADER_ROLE_ID);
     expect(mockBuildSettingsMenuView).toHaveBeenCalledWith('guild123', FAMILY_LEADER_ROLE_ID);
   });
 });
