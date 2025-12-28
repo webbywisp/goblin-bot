@@ -1,8 +1,18 @@
 import type { ChatInputCommand } from '@/commands/types';
 import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
-import { ClashOfClansClient, isValidPlayerTag } from '@/integrations/clashOfClans/client';
+import { ClashOfClansClient, isValidPlayerTag, normalizePlayerTag } from '@/integrations/clashOfClans/client';
 import { getRecruitAllowedRoleIds } from '@/recruit/configStore';
-import { ensureRecruitThreadFromMessage, populateRecruitThread } from '@/recruit/createRecruitThread';
+import {
+  ensureRecruitThreadFromMessage,
+  findExistingThreadByPlayerTag,
+  populateRecruitThread
+} from '@/recruit/createRecruitThread';
+import {
+  getOpenThreadByPlayerTag,
+  registerOpenApplicantThread,
+  releasePlayerTagLock,
+  tryLockPlayerTag
+} from '@/recruit/openApplicantStore';
 import { getRoleIdsFromMember } from '@/utils/discordRoles';
 import { SlashCommandBuilder } from 'discord.js';
 
@@ -70,8 +80,46 @@ const command: ChatInputCommand = {
       return;
     }
     const client = new ClashOfClansClient();
+    const normalizedPlayerTag = normalizePlayerTag(playerTag);
+    let pendingPlayerTagLock: string | null = null;
 
     try {
+      // Check for existing thread by player tag in the store
+      const existingInStore = getOpenThreadByPlayerTag(normalizedPlayerTag);
+      if (existingInStore) {
+        const existingChannel = await interaction.client.channels.fetch(existingInStore.threadId).catch(() => null);
+        const isStillOpen = existingChannel?.isThread() && !existingChannel.archived;
+        if (isStillOpen) {
+          await interaction.editReply(
+            `A recruit thread already exists for this player: <#${existingInStore.threadId}>.\n` +
+              'Close the existing thread before creating another.'
+          );
+          return;
+        }
+      }
+
+      // Check for existing active threads in the channel by player tag
+      const channel = interaction.channel;
+      if (channel && !channel.isDMBased()) {
+        const existingThread = await findExistingThreadByPlayerTag(channel, normalizedPlayerTag);
+        if (existingThread && !existingThread.archived) {
+          await interaction.editReply(
+            `A recruit thread already exists for this player in this channel: <#${existingThread.id}>.\n` +
+              'Close the existing thread before creating another.'
+          );
+          return;
+        }
+      }
+
+      // Try to lock the player tag to prevent concurrent creation
+      if (!tryLockPlayerTag(normalizedPlayerTag)) {
+        await interaction.editReply(
+          'Another recruiter is already creating a recruit thread for this player. Please try again shortly.'
+        );
+        return;
+      }
+      pendingPlayerTagLock = normalizedPlayerTag;
+
       const source = interaction.options.getString('source') ?? 'unknown';
       const player = await client.getPlayerByTag(playerTag);
 
@@ -84,6 +132,18 @@ const command: ChatInputCommand = {
       const thread = await ensureRecruitThreadFromMessage(replyMessage, threadName);
 
       if (thread) {
+        // Register the thread in the store (using a placeholder applicant ID since we don't have one)
+        const placeholderApplicantId = `player-tag:${normalizedPlayerTag}`;
+        registerOpenApplicantThread({
+          applicantId: placeholderApplicantId,
+          applicantTag: player.name,
+          threadId: thread.id,
+          threadUrl: `https://discord.com/channels/${thread.guildId ?? '@me'}/${thread.id}`,
+          playerTag: normalizedPlayerTag,
+          guildId: thread.guildId ?? guildId
+        });
+        pendingPlayerTagLock = null;
+
         const summaryParts = [
           interaction.guild ? `from ${interaction.guild.name}` : undefined,
           `Requested via /recruit by ${interaction.user.tag}`
@@ -107,6 +167,10 @@ const command: ChatInputCommand = {
       await interaction.editReply({
         content: `Could not look up that player tag.\n` + `- Tag: \`${playerTag}\`\n` + `- Error: ${msg}\n`
       });
+    } finally {
+      if (pendingPlayerTagLock) {
+        releasePlayerTagLock(pendingPlayerTagLock);
+      }
     }
   }
 };

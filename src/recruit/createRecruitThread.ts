@@ -1,4 +1,5 @@
 import type { ClashOfClansClient, CocPlayer, CocWarMember } from '@/integrations/clashOfClans/client';
+import { normalizePlayerTag } from '@/integrations/clashOfClans/client';
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -186,6 +187,64 @@ function collectAttacksFromWar(opts: {
       warEnds: opts.warEnds
     };
   });
+}
+
+export async function findExistingThreadByPlayerTag(
+  channel: Message['channel'],
+  playerTag: string
+): Promise<AnyThreadChannel | null> {
+  if (!channel.isTextBased() || channel.isDMBased()) return null;
+  if (!('guild' in channel) || !channel.guild) return null;
+
+  try {
+    const normalizedTag = normalizePlayerTag(playerTag).toUpperCase();
+    const tagWithoutHash = normalizedTag.replace(/^#/, '');
+    const fetched = await channel.guild.channels.fetchActiveThreads();
+
+    // Check threads in this channel
+    const candidateThreads = Array.from(fetched.threads.values()).filter((thread) => {
+      if (thread.parentId !== channel.id) return false;
+      if (thread.archived) return false;
+      return true;
+    });
+
+    // Search each thread's messages for the player tag
+    for (const thread of candidateThreads) {
+      try {
+        // Fetch the first few messages (recruit threads have the tag in the first embed)
+        const messages = await thread.messages.fetch({ limit: 5 });
+        for (const message of messages.values()) {
+          // Check message content
+          if (message.content && message.content.toUpperCase().includes(tagWithoutHash)) {
+            return thread;
+          }
+          // Check embeds (player tag is typically in the embed title)
+          for (const embed of message.embeds) {
+            const title = embed.title?.toUpperCase() ?? '';
+            const description = embed.description?.toUpperCase() ?? '';
+            if (title.includes(tagWithoutHash) || description.includes(tagWithoutHash)) {
+              return thread;
+            }
+            // Check embed fields
+            for (const field of embed.fields ?? []) {
+              const fieldName = field.name.toUpperCase();
+              const fieldValue = field.value.toUpperCase();
+              if (fieldName.includes(tagWithoutHash) || fieldValue.includes(tagWithoutHash)) {
+                return thread;
+              }
+            }
+          }
+        }
+      } catch {
+        // Skip threads we can't read
+        continue;
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function ensureRecruitThreadFromMessage(

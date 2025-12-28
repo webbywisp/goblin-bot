@@ -6,15 +6,22 @@ import {
   getRecruitCommunityInviteUrl,
   getRecruitDmTemplates
 } from '@/recruit/configStore';
-import { buildRecruitActionRow, ensureRecruitThreadFromMessage } from '@/recruit/createRecruitThread';
+import {
+  buildRecruitActionRow,
+  ensureRecruitThreadFromMessage,
+  findExistingThreadByPlayerTag
+} from '@/recruit/createRecruitThread';
 import { buildRecruiterDmComponents } from '@/recruit/dmCoordinator';
 import { createRecruitDmSession, updateRecruitDmSession } from '@/recruit/dmSessionStore';
 import {
   clearOpenApplicantThreadByThreadId,
   getOpenApplicantThread,
+  getOpenThreadByPlayerTag,
   registerOpenApplicantThread,
   releaseApplicantLock,
-  tryLockApplicant
+  releasePlayerTagLock,
+  tryLockApplicant,
+  tryLockPlayerTag
 } from '@/recruit/openApplicantStore';
 import { logger } from '@/utils/logger';
 import type { ActionRowBuilder, MessageActionRowComponentBuilder } from 'discord.js';
@@ -287,8 +294,45 @@ const command: MessageCommand = {
 
     const cocClient = new ClashOfClansClient();
     let pendingApplicantLockId: string | null = null;
+    let pendingPlayerTagLock: string | null = null;
+    const normalizedPlayerTag = normalizePlayerTag(playerTag);
 
     try {
+      // Lock the player tag FIRST to prevent race conditions
+      // This must happen before any expensive operations or duplicate checks
+      if (!tryLockPlayerTag(normalizedPlayerTag)) {
+        await interaction.editReply(
+          'Another recruiter is already creating a recruit thread for this player. Please try again shortly.'
+        );
+        return;
+      }
+      pendingPlayerTagLock = normalizedPlayerTag;
+
+      // Check for existing thread by player tag in the store
+      const existingByPlayerTag = getOpenThreadByPlayerTag(normalizedPlayerTag);
+      if (existingByPlayerTag) {
+        const existingChannel = await interaction.client.channels.fetch(existingByPlayerTag.threadId).catch(() => null);
+        const isStillOpen = existingChannel?.isThread() && !existingChannel.archived;
+        if (isStillOpen) {
+          await interaction.editReply(
+            `A recruit thread already exists for this player: <#${existingByPlayerTag.threadId}>.\n` +
+              'Close the existing thread before creating another.'
+          );
+          return;
+        }
+        clearOpenApplicantThreadByThreadId(existingByPlayerTag.threadId);
+      }
+
+      // Check for existing active threads in the destination channel by player tag
+      const existingThread = await findExistingThreadByPlayerTag(destination.channel, normalizedPlayerTag);
+      if (existingThread && !existingThread.archived) {
+        await interaction.editReply(
+          `A recruit thread already exists for this player in the destination channel: <#${existingThread.id}>.\n` +
+            'Close the existing thread before creating another.'
+        );
+        return;
+      }
+
       const player = await cocClient.getPlayerByTag(playerTag);
       const thValue = typeof player.townHallLevel === 'number' && player.townHallLevel > 0 ? player.townHallLevel : '?';
       const safePlayerName = sanitizeThreadName(player.name) || player.tag.replace('#', '');
@@ -343,6 +387,32 @@ const command: MessageCommand = {
         allowedMentions: { parse: [] }
       });
 
+      // Register the thread in the store to prevent duplicates
+      if (pendingApplicantLockId && applicantUser && !applicantUser.bot) {
+        registerOpenApplicantThread({
+          applicantId: applicantUser.id,
+          applicantTag: applicantUser.tag,
+          threadId: thread.id,
+          threadUrl: `https://discord.com/channels/${thread.guildId ?? '@me'}/${thread.id}`,
+          playerTag: normalizedPlayerTag,
+          guildId: thread.guildId ?? destination.guildId
+        });
+        pendingApplicantLockId = null;
+        pendingPlayerTagLock = null;
+      } else if (pendingPlayerTagLock) {
+        // Register thread by player tag even if we don't have an applicant user
+        const placeholderApplicantId = `player-tag:${normalizedPlayerTag}`;
+        registerOpenApplicantThread({
+          applicantId: placeholderApplicantId,
+          applicantTag: player.name,
+          threadId: thread.id,
+          threadUrl: `https://discord.com/channels/${thread.guildId ?? '@me'}/${thread.id}`,
+          playerTag: normalizedPlayerTag,
+          guildId: thread.guildId ?? destination.guildId
+        });
+        pendingPlayerTagLock = null;
+      }
+
       const baseReply = `Thread created in ${destination.guildName}: <#${thread.id}>`;
       let replyContent = baseReply;
       let dmComponents: ActionRowBuilder<MessageActionRowComponentBuilder>[] | undefined;
@@ -354,18 +424,6 @@ const command: MessageCommand = {
       } else if (applicantUser.id === interaction.user.id) {
         replyContent = `${baseReply}\nYou invoked this command on your own message, so no DM was opened.`;
       } else {
-        if (pendingApplicantLockId === applicantUser.id) {
-          registerOpenApplicantThread({
-            applicantId: applicantUser.id,
-            applicantTag: applicantUser.tag,
-            threadId: thread.id,
-            threadUrl: `https://discord.com/channels/${thread.guildId ?? '@me'}/${thread.id}`,
-            playerTag: player.tag,
-            guildId: thread.guildId ?? destination.guildId
-          });
-          pendingApplicantLockId = null;
-        }
-
         const [dmTemplates, clanConfigs, communityInviteUrl] = await Promise.all([
           getRecruitDmTemplates(destination.guildId),
           getRecruitClans(destination.guildId),
@@ -416,6 +474,9 @@ const command: MessageCommand = {
     } finally {
       if (pendingApplicantLockId) {
         releaseApplicantLock(pendingApplicantLockId);
+      }
+      if (pendingPlayerTagLock) {
+        releasePlayerTagLock(pendingPlayerTagLock);
       }
     }
   }

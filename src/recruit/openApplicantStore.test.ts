@@ -56,4 +56,96 @@ describe('openApplicantStore', () => {
     expect(store.getOpenApplicantThread('user')).toBeUndefined();
     expect(store.getAllOpenApplicantEntries()).toHaveLength(0);
   });
+
+  it('tracks threads by player tag', async () => {
+    const store = await loadStore();
+
+    store.registerOpenApplicantThread({
+      applicantId: 'user1',
+      applicantTag: 'User1#1234',
+      threadId: 'thread1',
+      threadUrl: 'https://discord.com/channels/1/2/3',
+      playerTag: '#ABC123',
+      guildId: 'guild'
+    });
+
+    expect(store.getOpenThreadByPlayerTag('#ABC123')).toMatchObject({ threadId: 'thread1' });
+    expect(store.getOpenThreadByPlayerTag('#abc123')).toMatchObject({ threadId: 'thread1' }); // case insensitive
+    expect(store.getOpenThreadByPlayerTag('ABC123')).toMatchObject({ threadId: 'thread1' }); // without #
+    expect(store.getOpenThreadByPlayerTag('#XYZ999')).toBeUndefined();
+  });
+
+  it('prevents duplicate player tag locks until released', async () => {
+    const store = await loadStore();
+
+    expect(store.tryLockPlayerTag('#ABC123')).toBe(true);
+    expect(store.tryLockPlayerTag('#ABC123')).toBe(false);
+    expect(store.tryLockPlayerTag('#abc123')).toBe(false); // case insensitive
+    expect(store.tryLockPlayerTag('ABC123')).toBe(false); // without #
+
+    store.releasePlayerTagLock('#ABC123');
+    expect(store.tryLockPlayerTag('#ABC123')).toBe(true);
+  });
+
+  it('clears player tag tracking when thread is cleared', async () => {
+    const store = await loadStore();
+
+    store.registerOpenApplicantThread({
+      applicantId: 'user',
+      applicantTag: 'User#1234',
+      threadId: 'thread',
+      threadUrl: 'https://discord.com/channels/1/2/3',
+      playerTag: '#ABC123',
+      guildId: 'guild'
+    });
+
+    expect(store.getOpenThreadByPlayerTag('#ABC123')).toMatchObject({ threadId: 'thread' });
+    expect(store.clearOpenApplicantThreadByThreadId('thread')).toBe(true);
+    expect(store.getOpenThreadByPlayerTag('#ABC123')).toBeUndefined();
+  });
+
+  it('handles multiple threads with different player tags', async () => {
+    const store = await loadStore();
+
+    store.registerOpenApplicantThread({
+      applicantId: 'user1',
+      applicantTag: 'User1#1234',
+      threadId: 'thread1',
+      threadUrl: 'https://discord.com/channels/1/2/3',
+      playerTag: '#ABC123',
+      guildId: 'guild'
+    });
+
+    store.registerOpenApplicantThread({
+      applicantId: 'user2',
+      applicantTag: 'User2#5678',
+      threadId: 'thread2',
+      threadUrl: 'https://discord.com/channels/1/2/4',
+      playerTag: '#XYZ999',
+      guildId: 'guild'
+    });
+
+    expect(store.getOpenThreadByPlayerTag('#ABC123')).toMatchObject({ threadId: 'thread1' });
+    expect(store.getOpenThreadByPlayerTag('#XYZ999')).toMatchObject({ threadId: 'thread2' });
+    expect(store.getAllOpenApplicantEntries()).toHaveLength(2);
+  });
+
+  it('releases player tag lock when thread is registered', async () => {
+    const store = await loadStore();
+
+    expect(store.tryLockPlayerTag('#ABC123')).toBe(true);
+    store.registerOpenApplicantThread({
+      applicantId: 'user',
+      applicantTag: 'User#1234',
+      threadId: 'thread',
+      threadUrl: 'https://discord.com/channels/1/2/3',
+      playerTag: '#ABC123',
+      guildId: 'guild'
+    });
+
+    // Lock should be released, but thread should be registered
+    expect(store.getOpenThreadByPlayerTag('#ABC123')).toMatchObject({ threadId: 'thread' });
+    // Can't lock again because thread exists
+    expect(store.tryLockPlayerTag('#ABC123')).toBe(false);
+  });
 });

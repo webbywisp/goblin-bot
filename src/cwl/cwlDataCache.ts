@@ -177,19 +177,22 @@ export async function listAvailableMonths(clanTag: string): Promise<string[]> {
   try {
     const clanPath = normalizeClanTagForPath(clanTag);
     const clanDir = path.join(DATA_DIR, clanPath);
-    
+
     // Log for debugging
     logger.debug({ clanTag, clanPath, clanDir, dataDir: DATA_DIR, cwd: process.cwd() }, 'Listing months for clan');
-    
+
     // Check if directory exists
     try {
       await fs.access(clanDir);
     } catch (accessErr) {
       // Directory doesn't exist, log and return empty array
-      logger.warn({ clanTag, clanPath, clanDir, dataDir: DATA_DIR, cwd: process.cwd(), err: accessErr }, 'Clan data directory does not exist');
+      logger.warn(
+        { clanTag, clanPath, clanDir, dataDir: DATA_DIR, cwd: process.cwd(), err: accessErr },
+        'Clan data directory does not exist'
+      );
       return [];
     }
-    
+
     const entries = await fs.readdir(clanDir, { withFileTypes: true });
     const months = entries
       .filter((e) => e.isDirectory())
@@ -197,12 +200,15 @@ export async function listAvailableMonths(clanTag: string): Promise<string[]> {
       .filter((name) => /^\d{4}-\d{2}$/.test(name)) // Only include valid YYYY-MM format
       .sort()
       .reverse();
-    
+
     logger.debug({ clanTag, clanPath, months, entryCount: entries.length }, 'Found months for clan');
     return months;
   } catch (err) {
     // Log error for debugging but still return empty array
-    logger.error({ err, clanTag, clanPath: normalizeClanTagForPath(clanTag), dataDir: DATA_DIR, cwd: process.cwd() }, 'Error listing months for clan');
+    logger.error(
+      { err, clanTag, clanPath: normalizeClanTagForPath(clanTag), dataDir: DATA_DIR, cwd: process.cwd() },
+      'Error listing months for clan'
+    );
     return [];
   }
 }

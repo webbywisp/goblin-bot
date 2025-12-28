@@ -14,7 +14,9 @@ export type OpenApplicantEntry = {
 const STORE_PATH = path.resolve(process.cwd(), 'tmp', 'open-recruit-applicants.json');
 const openByApplicant = new Map<string, OpenApplicantEntry>();
 const openByThread = new Map<string, OpenApplicantEntry>();
+const openByPlayerTag = new Map<string, OpenApplicantEntry>();
 const pendingApplicants = new Set<string>();
+const pendingPlayerTags = new Set<string>();
 
 type StorePayload = {
   version: 1;
@@ -43,9 +45,11 @@ async function loadFromDisk() {
     if (parsed.version !== 1 || !Array.isArray(parsed.entries)) return;
     openByApplicant.clear();
     openByThread.clear();
+    openByPlayerTag.clear();
     for (const entry of parsed.entries) {
       openByApplicant.set(entry.applicantId, entry);
       openByThread.set(entry.threadId, entry);
+      openByPlayerTag.set(entry.playerTag.toUpperCase(), entry);
     }
   } catch {
     // ignore missing/corrupt files
@@ -54,6 +58,13 @@ async function loadFromDisk() {
 
 export function getOpenApplicantThread(applicantId: string): OpenApplicantEntry | undefined {
   return openByApplicant.get(applicantId);
+}
+
+export function getOpenThreadByPlayerTag(playerTag: string): OpenApplicantEntry | undefined {
+  // Normalize to uppercase and ensure # prefix for consistency
+  const normalized = playerTag.toUpperCase().trim();
+  const withHash = normalized.startsWith('#') ? normalized : `#${normalized}`;
+  return openByPlayerTag.get(withHash);
 }
 
 export function getAllOpenApplicantEntries(): OpenApplicantEntry[] {
@@ -67,18 +78,38 @@ export function tryLockApplicant(applicantId: string): boolean {
   return true;
 }
 
+export function tryLockPlayerTag(playerTag: string): boolean {
+  // Normalize to uppercase and ensure # prefix for consistency
+  const normalized = playerTag.toUpperCase().trim();
+  const withHash = normalized.startsWith('#') ? normalized : `#${normalized}`;
+  if (openByPlayerTag.has(withHash)) return false;
+  if (pendingPlayerTags.has(withHash)) return false;
+  pendingPlayerTags.add(withHash);
+  return true;
+}
+
 export function releaseApplicantLock(applicantId: string): void {
   pendingApplicants.delete(applicantId);
 }
 
+export function releasePlayerTagLock(playerTag: string): void {
+  // Normalize to uppercase and ensure # prefix for consistency
+  const normalized = playerTag.toUpperCase().trim();
+  const withHash = normalized.startsWith('#') ? normalized : `#${normalized}`;
+  pendingPlayerTags.delete(withHash);
+}
+
 export function registerOpenApplicantThread(entry: Omit<OpenApplicantEntry, 'openedAt'>): OpenApplicantEntry {
   pendingApplicants.delete(entry.applicantId);
+  const normalizedPlayerTag = entry.playerTag.toUpperCase();
+  pendingPlayerTags.delete(normalizedPlayerTag);
   const record: OpenApplicantEntry = {
     ...entry,
     openedAt: Date.now()
   };
   openByApplicant.set(record.applicantId, record);
   openByThread.set(record.threadId, record);
+  openByPlayerTag.set(normalizedPlayerTag, record);
   void persist();
   return record;
 }
@@ -88,6 +119,8 @@ export function clearOpenApplicantThreadByThreadId(threadId: string): boolean {
   if (!existing) return false;
   openByThread.delete(threadId);
   openByApplicant.delete(existing.applicantId);
+  const normalizedPlayerTag = existing.playerTag.toUpperCase();
+  openByPlayerTag.delete(normalizedPlayerTag);
   void persist();
   return true;
 }
