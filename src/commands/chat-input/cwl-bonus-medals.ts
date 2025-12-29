@@ -1,5 +1,4 @@
 import type { ChatInputCommand } from '@/commands/types';
-import { FAMILY_LEADER_ROLE_ID } from '@/config/roles';
 import {
   getDateKey,
   isWarFinished,
@@ -12,7 +11,7 @@ import { storeCwlResults } from '@/cwl/handleCwlComponentInteraction';
 import { storePaginationState } from '@/cwl/handleCwlNavigation';
 import { ClashOfClansClient, type CocCwlWar, type CocWarMember } from '@/integrations/clashOfClans/client';
 import { getRecruitClans } from '@/recruit/configStore';
-import { getRoleIdsFromMember } from '@/utils/discordRoles';
+import { canManageSettings } from '@/settings/permissions';
 import { logger } from '@/utils/logger';
 import {
   ActionRowBuilder,
@@ -89,26 +88,11 @@ const command: ChatInputCommand = {
       return;
     }
 
-    const guild = interaction.guild;
     const guildId = interaction.guildId;
 
-    const leaderRole =
-      guild.roles.cache.get(FAMILY_LEADER_ROLE_ID) ??
-      (await guild.roles.fetch(FAMILY_LEADER_ROLE_ID).catch(() => null));
-
-    if (!leaderRole) {
+    if (!(await canManageSettings(interaction.user.id, interaction.member, guildId))) {
       await interaction.reply({
-        content: `The Family Leader role (<@&${FAMILY_LEADER_ROLE_ID}>) is missing in this server. Create it to use this command.`
-      });
-      return;
-    }
-
-    const memberRoleIds = getRoleIdsFromMember(interaction.member);
-    const hasLeaderRole = memberRoleIds.has(FAMILY_LEADER_ROLE_ID);
-
-    if (!hasLeaderRole) {
-      await interaction.reply({
-        content: 'Only Family Leaders can use this command.'
+        content: 'Only owners or leader roles can use this command.'
       });
       return;
     }
