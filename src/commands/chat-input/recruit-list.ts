@@ -56,7 +56,9 @@ const command: ChatInputCommand = {
 
     try {
       const fetched = await guild.channels.fetchActiveThreads();
-      const openThreads = fetched.threads.filter((thread) => !thread.archived && thread.ownerId === botId);
+      const openThreads = fetched.threads.filter(
+        (thread) => !thread.archived && !thread.locked && thread.ownerId === botId
+      );
 
       if (openThreads.size === 0) {
         await interaction.editReply('No open recruit threads found.');
@@ -64,7 +66,7 @@ const command: ChatInputCommand = {
       }
 
       const sorted = Array.from(openThreads.values()).sort(
-        (a, b) => (b.createdTimestamp ?? 0) - (a.createdTimestamp ?? 0)
+        (a, b) => (a.createdTimestamp ?? 0) - (b.createdTimestamp ?? 0)
       );
 
       const lines: string[] = [];
@@ -74,7 +76,10 @@ const command: ChatInputCommand = {
       for (const thread of sorted) {
         const parentSuffix = thread.parentId ? ` (in <#${thread.parentId}>)` : '';
         const name = thread.name ?? 'Recruit thread';
-        const line = `- <#${thread.id}> — ${name}${parentSuffix}`;
+        const createdDate = thread.createdAt
+          ? thread.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'Unknown date';
+        const line = `- <#${thread.id}> — ${name}${parentSuffix} — Created: ${createdDate}`;
         const nextLength = runningLength + line.length + (lines.length ? 1 : 0);
 
         if (nextLength > 1800) {
