@@ -355,6 +355,20 @@ export function buildRecruitActionRow({
   return new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, settingsBtn, closeBtn);
 }
 
+export function buildRecruitCloseButton({
+  replyMessageId
+}: {
+  replyMessageId: string;
+}): ActionRowBuilder<ButtonBuilder> {
+  // Use "no-tag" as tagNoHash placeholder when there's no player tag
+  const closeBtn = new ButtonBuilder()
+    .setCustomId(`recruit:close:no-tag:${replyMessageId}`)
+    .setStyle(ButtonStyle.Danger)
+    .setLabel('Close');
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(closeBtn);
+}
+
 export async function populateRecruitThread({
   thread,
   player,

@@ -75,52 +75,23 @@ const command: ChatInputCommand = {
         sorted.map(async (thread) => {
           let creatorMention = 'Unknown';
           try {
-            // Try starter message first (cheaper than fetching thread messages)
+            // Check the starter message (the message the thread was created from)
             const starterMessage = await thread.fetchStarterMessage().catch(() => null);
             if (starterMessage?.content) {
-              const starterMatch = starterMessage.content.match(/Recruit thread created by\s*<@!?(\d+)>/i);
-              if (starterMatch && starterMatch[1]) {
-                creatorMention = `<@${starterMatch[1]}>`;
-                return { thread, creatorMention };
-              }
-            }
-
-            // Fallback: fetch first few messages from thread (reduced limit for performance)
-            const messages = await thread.messages.fetch({ limit: 3 }).catch(() => null);
-            if (messages && messages.size > 0) {
-              // Get the oldest message (last in the collection since messages are newest first)
-              const firstMessage = messages.last();
-              if (firstMessage) {
-                // Check message content and embeds for creator mention
-                const contentToCheck = firstMessage.content ?? '';
-                const embedTexts = firstMessage.embeds
-                  .map((embed) => [
-                    embed.title,
-                    embed.description,
-                    ...(embed.fields?.map((f) => `${f.name} ${f.value}`) ?? [])
-                  ])
-                  .flat()
-                  .filter(Boolean)
-                  .join('\n');
-
-                const fullText = `${contentToCheck}\n${embedTexts}`;
-
-                if (fullText) {
-                  // Look for "Recruit thread created by <@userId>" or "requested by <@userId>" patterns
-                  const createdByMatch = fullText.match(/Recruit thread created by\s*<@!?(\d+)>/i);
-                  if (createdByMatch && createdByMatch[1]) {
-                    creatorMention = `<@${createdByMatch[1]}>`;
-                  } else {
-                    const requestedByMatch = fullText.match(/requested by\s*<@!?(\d+)>/i);
-                    if (requestedByMatch && requestedByMatch[1]) {
-                      creatorMention = `<@${requestedByMatch[1]}>`;
-                    } else {
-                      // Fallback: check for any user mention (excluding bot)
-                      const anyMentionMatch = fullText.match(/<@!?(\d+)>/);
-                      if (anyMentionMatch && anyMentionMatch[1] && anyMentionMatch[1] !== botId) {
-                        creatorMention = `<@${anyMentionMatch[1]}>`;
-                      }
-                    }
+              // Look for "Recruit thread created by <@userId>" pattern
+              const createdByMatch = starterMessage.content.match(/Recruit thread created by\s*<@!?(\d+)>/i);
+              if (createdByMatch && createdByMatch[1]) {
+                creatorMention = `<@${createdByMatch[1]}>`;
+              } else {
+                // Fallback: look for "requested by <@userId>" pattern
+                const requestedByMatch = starterMessage.content.match(/requested by\s*<@!?(\d+)>/i);
+                if (requestedByMatch && requestedByMatch[1]) {
+                  creatorMention = `<@${requestedByMatch[1]}>`;
+                } else {
+                  // Last resort: find any user mention in the starter message (excluding bot)
+                  const anyMentionMatch = starterMessage.content.match(/<@!?(\d+)>/);
+                  if (anyMentionMatch && anyMentionMatch[1] && anyMentionMatch[1] !== botId) {
+                    creatorMention = `<@${anyMentionMatch[1]}>`;
                   }
                 }
               }

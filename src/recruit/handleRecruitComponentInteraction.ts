@@ -226,7 +226,8 @@ export async function handleClose(interaction: ButtonInteraction, tagNoHash: str
 
   // Post a closing note before archiving/locking.
   try {
-    await interaction.channel?.send(`Recruit thread closed by <@${interaction.user.id}> for \`#${tagNoHash}\`.`);
+    const tagText = tagNoHash === 'no-tag' ? 'this thread' : `\`#${tagNoHash}\``;
+    await interaction.channel?.send(`Recruit thread closed by <@${interaction.user.id}> for ${tagText}.`);
   } catch {
     // ignore
   }

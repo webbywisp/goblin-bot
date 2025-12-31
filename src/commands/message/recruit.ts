@@ -6,7 +6,11 @@ import {
   getRecruitCommunityInviteUrl,
   getRecruitDmTemplates
 } from '@/recruit/configStore';
-import { buildRecruitActionRow, ensureRecruitThreadFromMessage } from '@/recruit/createRecruitThread';
+import {
+  buildRecruitActionRow,
+  buildRecruitCloseButton,
+  ensureRecruitThreadFromMessage
+} from '@/recruit/createRecruitThread';
 import { buildRecruiterDmComponents } from '@/recruit/dmCoordinator';
 import { createRecruitDmSession, updateRecruitDmSession } from '@/recruit/dmSessionStore';
 import {
@@ -421,7 +425,7 @@ const command: MessageCommand = {
         payload.content = payload.content ? `${warningText}\n\n${payload.content}` : warningText;
       }
 
-      // Only add action row if we have player data
+      // Add action row - full buttons if we have player data, close button only if not
       if (player) {
         const actionRow = buildRecruitActionRow({ player, replyMessageId: statusMessage.id });
         await thread.send({
@@ -430,8 +434,12 @@ const command: MessageCommand = {
           allowedMentions: { parse: [] }
         });
       } else {
+        const closeButtonRow = buildRecruitCloseButton({
+          replyMessageId: statusMessage.id
+        });
         await thread.send({
           ...payload,
+          components: [closeButtonRow],
           allowedMentions: { parse: [] }
         });
       }
@@ -522,7 +530,8 @@ const command: MessageCommand = {
         }
       }
 
-      await statusMessage.edit(`Recruit thread created by ${interaction.user}: <#${thread.id}>`);
+      await statusMessage.edit(`Recruit thread created by <@${interaction.user.id}>: <#${thread.id}>`);
+
       await interaction.editReply({
         content: replyContent,
         components: dmComponents
