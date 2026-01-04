@@ -876,7 +876,7 @@ describe('CWL Bonus Medals - Real Data Tests', () => {
     const client = {
       getWarLeagueGroupByClanTag: async () => ({
         state: 'warEnded',
-        rounds: []
+        rounds: [{ warTags: ['#WAR1', '#WAR2', '#WAR3', '#WAR4'] }]
       }),
       getCwlWarByTag: async () => {
         throw new Error('Should not fetch API when cached data exists');

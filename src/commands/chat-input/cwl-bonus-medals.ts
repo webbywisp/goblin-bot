@@ -356,6 +356,7 @@ export async function calculateClanBonusMedals(
 ): Promise<ClanResults> {
   const wars: Array<{ war: CocCwlWar; index: number; opponentName: string }> = [];
   const currentMonthKey = getDateKey(new Date());
+  let processedWarCount = 0;
 
   // If dateKey is provided, try to load from cache first
   if (dateKey) {
@@ -384,18 +385,16 @@ export async function calculateClanBonusMedals(
 
         const isClanSide = war.clan?.tag === clanTag;
         const opponentName = isClanSide ? war.opponent?.name || 'Unknown' : war.clan?.name || 'Unknown';
-        // Use sequential index (0, 1, 2...) after deduplication
-        // This ensures wars are numbered correctly even if duplicates are skipped
         wars.push({ war, index: wars.length, opponentName });
       }
 
-      // If we have all cached wars, we can process them
-      // (continue to processing logic below)
+      processedWarCount = wars.length;
     }
   }
 
-  // If no cached data and it's a past month, return error
-  if (wars.length === 0 && dateKey && dateKey !== currentMonthKey) {
+  const shouldFetchWars = !dateKey || processedWarCount < 7;
+
+  if (dateKey && dateKey !== currentMonthKey && wars.length === 0) {
     return {
       clanTag,
       clanName: clanName || clanTag,
@@ -404,18 +403,14 @@ export async function calculateClanBonusMedals(
     };
   }
 
-  // If no cached data or not using cache, fetch from API
-  if (wars.length === 0) {
-    // Get current CWL group
+  if (shouldFetchWars) {
     let group;
     try {
       group = await client.getWarLeagueGroupByClanTag(clanTag);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      // Check if it's a 404 or similar - clan might not be in CWL
       const status = err && typeof err === 'object' && 'status' in err ? (err as { status: number }).status : undefined;
       if (status === 404 || errorMsg.includes('404') || errorMsg.includes('not found')) {
-        // Clan is not in CWL - return empty results instead of throwing
         return {
           clanTag,
           clanName: clanName || clanTag,
@@ -423,7 +418,6 @@ export async function calculateClanBonusMedals(
           error: 'Clan is not currently in CWL or has no CWL history'
         };
       }
-      // For other errors, still return gracefully
       return {
         clanTag,
         clanName: clanName || clanTag,
@@ -432,61 +426,26 @@ export async function calculateClanBonusMedals(
       };
     }
 
-    // Check if group state indicates CWL is active
     if (group.state === 'notInWar' || !group.rounds || group.rounds.length === 0) {
-      // No active CWL - if we have a dateKey for a past month, try cache
-      // Otherwise return empty results
       if (dateKey && dateKey !== currentMonthKey) {
-        // Try to load from cache for the specified month
-        const cachedWars = await loadCachedWarsForMonth(clanTag, dateKey);
-        if (cachedWars.size > 0) {
-          // Process cached wars (same logic as above)
-          const sortedDays = Array.from(cachedWars.keys()).sort((a: number, b: number) => a - b);
-          const seenEndTimes = new Set<string>();
-
-          for (let i = 0; i < sortedDays.length; i++) {
-            const day = sortedDays[i];
-            const war = cachedWars.get(day)!;
-            if (war.endTime && seenEndTimes.has(war.endTime)) {
-              continue;
-            }
-            if (war.endTime) {
-              seenEndTimes.add(war.endTime);
-            }
-
-            if (!warIncludesClan(war, clanTag)) {
-              continue;
-            }
-
-            const isClanSide = war.clan?.tag === clanTag;
-            const opponentName = isClanSide ? war.opponent?.name || 'Unknown' : war.clan?.name || 'Unknown';
-            wars.push({ war, index: wars.length, opponentName });
-          }
-          // Continue to processing logic below
-        } else {
-          // No cached data for this month
-          return {
-            clanTag,
-            clanName: clanName || clanTag,
-            members: [],
-            error: `No CWL data available for ${dateKey}. The clan may not have participated in CWL that month.`
-          };
-        }
-      } else {
-        // No active CWL and no specific month requested
         return {
           clanTag,
           clanName: clanName || clanTag,
           members: [],
-          error: 'Clan is not currently in an active CWL'
+          error: `No CWL data available for ${dateKey}. The clan may not have participated in CWL that month.`
         };
       }
+      return {
+        clanTag,
+        clanName: clanName || clanTag,
+        members: [],
+        error: 'Clan is not currently in an active CWL'
+      };
     }
 
     const warTags = (group.rounds ?? []).flatMap((r) => r.warTags ?? []).filter((t) => t && t !== '#0') ?? [];
 
     if (warTags.length === 0) {
-      // No wars found - return empty results instead of throwing
       return {
         clanTag,
         clanName: clanName || clanTag,
@@ -495,11 +454,8 @@ export async function calculateClanBonusMedals(
       };
     }
 
-    // Fetch all wars from API
-    let processedWarCount = 0;
-    for (let i = 0; i < warTags.length; i++) {
+    for (let i = processedWarCount; i < warTags.length; i++) {
       try {
-        // Try cache first if we have dateKey
         let war: CocCwlWar | null = null;
         let fetchedFromApi = false;
         if (dateKey) {
@@ -509,41 +465,35 @@ export async function calculateClanBonusMedals(
           }
         }
 
-        // If not in cache or not finished, fetch from API
         if (!war) {
           war = await client.getCwlWarByTag(warTags[i]);
           fetchedFromApi = true;
         }
 
-        if (!warIncludesClan(war, clanTag)) {
-          continue;
-        }
-        if (!isWarFinished(war)) {
+        if (!warIncludesClan(war, clanTag) || !isWarFinished(war)) {
           continue;
         }
 
-        if (fetchedFromApi && dateKey && isWarFinished(war)) {
-          await saveWarToCache(war, clanTag, processedWarCount);
+        const warIndex = processedWarCount;
+        if (fetchedFromApi && dateKey) {
+          await saveWarToCache(war, clanTag, warIndex);
         }
 
-        // Check if war has member data
         if (!war.clan?.members || war.clan.members.length === 0) {
-          // War might not have started yet or data not available
           continue;
         }
+
         const isClanSide = war.clan?.tag === clanTag;
         const opponentName = isClanSide ? war.opponent?.name || 'Unknown' : war.clan?.name || 'Unknown';
-        wars.push({ war, index: processedWarCount, opponentName });
+        wars.push({ war, index: warIndex, opponentName });
         processedWarCount++;
       } catch (err) {
         logger.warn({ err, warTag: warTags[i], clanTag }, 'Failed to fetch CWL war');
-        // Continue with other wars
       }
     }
   }
 
   if (wars.length === 0) {
-    // No wars with data - return empty results instead of throwing
     return {
       clanTag,
       clanName: clanName || clanTag,
