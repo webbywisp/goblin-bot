@@ -145,9 +145,9 @@ export async function handleCwlNavigation(interaction: ButtonInteraction): Promi
 
   const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevButton, pageButton, nextButton, exportButton);
 
-  // Build dropdown(s) for current page's clan
-  // Discord limit is 25 options per dropdown, so we need multiple dropdowns if >25 members
-  const components: Array<ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>> = [];
+  // Build dropdown(s) for current page's clan with a hard cap to stay within Discord limits
+  const dropdownRows: Array<ActionRowBuilder<StringSelectMenuBuilder>> = [];
+  const maxDropdownRows = 3;
   if (state.results && state.results.length > state.currentPage) {
     const currentClan = state.results[state.currentPage];
     if (currentClan.members.length > 0) {
@@ -156,6 +156,10 @@ export async function handleCwlNavigation(interaction: ButtonInteraction): Promi
       const numDropdowns = Math.ceil(totalMembers / maxOptionsPerDropdown);
 
       for (let i = 0; i < numDropdowns; i++) {
+        if (dropdownRows.length >= maxDropdownRows) {
+          break;
+        }
+
         const startIdx = i * maxOptionsPerDropdown;
         const endIdx = Math.min(startIdx + maxOptionsPerDropdown, totalMembers);
         const members = currentClan.members.slice(startIdx, endIdx);
@@ -183,14 +187,15 @@ export async function handleCwlNavigation(interaction: ButtonInteraction): Promi
               };
             })
           );
-        components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
+        dropdownRows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
       }
     }
   }
 
+  const componentRows = dropdownRows.length > 0 ? [...dropdownRows, navRow] : [navRow];
   await interaction.update({
     embeds: [state.embeds[state.currentPage]],
-    components: components.length > 0 ? [...components, navRow] : [navRow]
+    components: componentRows
   });
 
   return true;

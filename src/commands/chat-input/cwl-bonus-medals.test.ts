@@ -837,6 +837,63 @@ describe('CWL Bonus Medals - Real Data Tests', () => {
   const clanName = 'Goofy Goblins';
   const dateKey = '2025-12';
 
+  it('handles ongoing month with partial cached data without crashing', async () => {
+    const ongoingDateKey = '2026-01';
+
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const cacheDir = path.resolve(process.cwd(), 'src/data/2GRUGPJRR/2026-01');
+    const entries = await fs.readdir(cacheDir, { withFileTypes: true });
+    const dayFiles = entries
+      .filter((entry) => entry.isFile() && /^day\d+\.json$/i.test(entry.name))
+      .map((entry) => parseInt(entry.name.match(/^day(\d+)\.json$/i)![1], 10))
+      .sort((a, b) => a - b);
+
+    if (dayFiles.length === 0) {
+      console.warn('Skipping ongoing month test; no cached day files found');
+      return;
+    }
+
+    const cachedWars = new Map<number, CocCwlWar>();
+    for (const day of dayFiles) {
+      const filePath = path.resolve(cacheDir, `day${day}.json`);
+      const raw = await fs.readFile(filePath, 'utf8');
+      cachedWars.set(day, JSON.parse(raw) as CocCwlWar);
+    }
+
+    expect(cachedWars.size).toBe(dayFiles.length);
+
+    const cwlDataCache = await import('@/cwl/cwlDataCache');
+    const spy = vi.spyOn(cwlDataCache, 'loadCachedWarsForMonth').mockResolvedValue(cachedWars);
+
+    const { calculateClanBonusMedals } = await import('@/commands/chat-input/cwl-bonus-medals');
+    const client = {
+      getWarLeagueGroupByClanTag: async () => ({
+        state: 'warEnded',
+        rounds: []
+      }),
+      getCwlWarByTag: async () => {
+        throw new Error('Should not fetch API when cached data exists');
+      }
+    };
+
+    const result = await calculateClanBonusMedals(
+      client as unknown as Parameters<typeof calculateClanBonusMedals>[0],
+      clanTag,
+      clanName,
+      ongoingDateKey
+    );
+
+    spy.mockRestore();
+
+    expect(result.error).toBeUndefined();
+    expect(result.members.length).toBeGreaterThan(0);
+    const hasRecordedWar = result.members.some(
+      (member) => member.attackDetails.length > 0 || member.defenseDetails.length > 0
+    );
+    expect(hasRecordedWar).toBe(true);
+  });
+
   it.skip('should calculate correct score for Webby Wisp using real cached data', async () => {
     // Skip this test - it requires real file system access and may be environment-dependent
     // The permission tests above verify the main functionality we added

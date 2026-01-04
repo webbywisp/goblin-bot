@@ -341,6 +341,13 @@ const command: ChatInputCommand = {
   }
 };
 
+function warIncludesClan(war: CocCwlWar, clanTag: string): boolean {
+  const normalizedClanTag = clanTag.toUpperCase();
+  const clanSide = war.clan?.tag?.toUpperCase();
+  const opponentSide = war.opponent?.tag?.toUpperCase();
+  return clanSide === normalizedClanTag || opponentSide === normalizedClanTag;
+}
+
 export async function calculateClanBonusMedals(
   client: ClashOfClansClient,
   clanTag: string,
@@ -369,6 +376,10 @@ export async function calculateClanBonusMedals(
         }
         if (war.endTime) {
           seenEndTimes.add(war.endTime);
+        }
+
+        if (!warIncludesClan(war, clanTag)) {
+          continue;
         }
 
         const isClanSide = war.clan?.tag === clanTag;
@@ -443,6 +454,10 @@ export async function calculateClanBonusMedals(
               seenEndTimes.add(war.endTime);
             }
 
+            if (!warIncludesClan(war, clanTag)) {
+              continue;
+            }
+
             const isClanSide = war.clan?.tag === clanTag;
             const opponentName = isClanSide ? war.opponent?.name || 'Unknown' : war.clan?.name || 'Unknown';
             wars.push({ war, index: wars.length, opponentName });
@@ -481,10 +496,12 @@ export async function calculateClanBonusMedals(
     }
 
     // Fetch all wars from API
+    let processedWarCount = 0;
     for (let i = 0; i < warTags.length; i++) {
       try {
         // Try cache first if we have dateKey
         let war: CocCwlWar | null = null;
+        let fetchedFromApi = false;
         if (dateKey) {
           const cached = await loadCachedWar(clanTag, dateKey, i + 1);
           if (cached && isWarFinished(cached)) {
@@ -495,10 +512,18 @@ export async function calculateClanBonusMedals(
         // If not in cache or not finished, fetch from API
         if (!war) {
           war = await client.getCwlWarByTag(warTags[i]);
-          // Save to cache if war has finished (pass round index for proper day numbering)
-          if (isWarFinished(war)) {
-            await saveWarToCache(war, clanTag, i);
-          }
+          fetchedFromApi = true;
+        }
+
+        if (!warIncludesClan(war, clanTag)) {
+          continue;
+        }
+        if (!isWarFinished(war)) {
+          continue;
+        }
+
+        if (fetchedFromApi && dateKey && isWarFinished(war)) {
+          await saveWarToCache(war, clanTag, processedWarCount);
         }
 
         // Check if war has member data
@@ -508,7 +533,8 @@ export async function calculateClanBonusMedals(
         }
         const isClanSide = war.clan?.tag === clanTag;
         const opponentName = isClanSide ? war.opponent?.name || 'Unknown' : war.clan?.name || 'Unknown';
-        wars.push({ war, index: i, opponentName });
+        wars.push({ war, index: processedWarCount, opponentName });
+        processedWarCount++;
       } catch (err) {
         logger.warn({ err, warTag: warTags[i], clanTag }, 'Failed to fetch CWL war');
         // Continue with other wars
@@ -890,11 +916,10 @@ export async function displayResults(
   }
 
   // Build components: inspection dropdown for current page + navigation buttons
-  // We'll build the dropdown dynamically based on the current page in the navigation handler
-  const components: Array<ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>> = [];
+  const dropdownRows: Array<ActionRowBuilder<StringSelectMenuBuilder>> = [];
+  const maxDropdownRows = 3;
 
   // Add inspection dropdown(s) for the first clan (current page)
-  // Discord limit is 25 options per dropdown, so we need multiple dropdowns if >25 members
   if (results.length > 0 && embeds.length > 0) {
     const firstClanResult = results[0];
     if (firstClanResult.members.length > 0 && !firstClanResult.error) {
@@ -903,6 +928,10 @@ export async function displayResults(
       const numDropdowns = Math.ceil(totalMembers / maxOptionsPerDropdown);
 
       for (let i = 0; i < numDropdowns; i++) {
+        if (dropdownRows.length >= maxDropdownRows) {
+          break;
+        }
+
         const startIdx = i * maxOptionsPerDropdown;
         const endIdx = Math.min(startIdx + maxOptionsPerDropdown, totalMembers);
         const members = firstClanResult.members.slice(startIdx, endIdx);
@@ -930,7 +959,7 @@ export async function displayResults(
               };
             })
           );
-        components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
+        dropdownRows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
       }
     }
   }
@@ -978,10 +1007,12 @@ export async function displayResults(
 
   const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevButton, pageButton, nextButton, exportButton);
 
+  const componentRows = dropdownRows.length > 0 ? [...dropdownRows, navRow] : [navRow];
+
   // Send initial message with first embed
   await interaction.editReply({
     embeds: [embeds[currentPage]],
-    components: components.length > 0 ? [...components, navRow] : [navRow]
+    components: componentRows
   });
 }
 

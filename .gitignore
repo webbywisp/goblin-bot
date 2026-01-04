@@ -141,3 +141,4 @@ recruit-config.json
 
 tmp
 .DS_Store
+src/data
