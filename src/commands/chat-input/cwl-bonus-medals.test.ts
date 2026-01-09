@@ -356,9 +356,8 @@ describe('CWL Bonus Medals - New Defense Scoring Rules', () => {
     expect(result.members).toHaveLength(1);
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
-    // Defense: not attacked = 2 points
-    // Total: 8 points
-    expect(member.totalPoints).toBe(8);
+    // Defense is tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(6);
     expect(member.defenseDetails).toHaveLength(1);
     expect(member.defenseDetails[0].starsDefended).toBe(3); // Defended all 3 stars since not attacked
   });
@@ -396,9 +395,8 @@ describe('CWL Bonus Medals - New Defense Scoring Rules', () => {
     expect(result.members).toHaveLength(2);
     const member1 = result.members.find((m) => m.tag === '#MEMBER1')!;
     // Attack: 3 stars * 2 = 6 points
-    // Defense: not attacked = 2 points
-    // Total: 8 points
-    expect(member1.totalPoints).toBe(8);
+    // Defense is tracked for reference only (no points awarded)
+    expect(member1.totalPoints).toBe(6);
     expect(member1.defenseDetails).toHaveLength(1);
     expect(member1.defenseDetails[0].starsDefended).toBe(3); // Defended all 3 stars since not attacked
   });
@@ -429,12 +427,8 @@ describe('CWL Bonus Medals - New Defense Scoring Rules', () => {
     expect(result.members).toHaveLength(1);
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points per war * 3 wars = 18 points
-    // Defense: not attacked in any war = 2 points TOTAL (not per war)
-    // Total: 20 points
-    // Attack: 3 stars * 2 = 6 points per war * 3 wars = 18 points
-    // Defense: not attacked = 2 points per war * 3 wars = 6 points
-    // Total: 24 points
-    expect(member.totalPoints).toBe(24);
+    // Defense is tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(18);
     expect(member.defenseDetails).toHaveLength(3); // One entry per war
     expect(member.defenseDetails.every((d) => d.starsDefended === 3)).toBe(true); // Defended all 3 stars since not attacked in any war
   });
@@ -472,7 +466,7 @@ describe('CWL Bonus Medals - New Defense Scoring Rules', () => {
     expect(result.members).toHaveLength(1);
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
-    // Defense: 1 star defended (3 - 2), but attacker TH14 < defender TH15, so 0 points
+    // Defense tracked for reference only (no points awarded)
     // Total: 6 points
     expect(member.totalPoints).toBe(6);
     expect(member.defenseDetails).toHaveLength(1); // Defense details recorded even with 0 points
@@ -513,9 +507,8 @@ describe('CWL Bonus Medals - New Defense Scoring Rules', () => {
     expect(result.members).toHaveLength(1);
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
-    // Defense: 1 star defended (3 - 2) * 2 = 2 points
-    // Total: 8 points
-    expect(member.totalPoints).toBe(8);
+    // Defense tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(6);
     expect(member.defenseDetails).toHaveLength(1);
     expect(member.defenseDetails[0].starsDefended).toBe(1);
   });
@@ -554,8 +547,7 @@ describe('CWL Bonus Medals - New Defense Scoring Rules', () => {
     expect(result.members).toHaveLength(1);
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
-    // Defense: 0 stars defended (3-starred), attacker TH14 < defender TH15, so 0 points
-    // Total: 6 points
+    // Defense tracked for reference only (no points awarded)
     expect(member.totalPoints).toBe(6);
     expect(member.defenseDetails).toHaveLength(1);
     expect(member.defenseDetails[0].starsDefended).toBe(0); // 3-starred
@@ -604,9 +596,8 @@ describe('CWL Bonus Medals - New Defense Scoring Rules', () => {
     expect(result.members).toHaveLength(1);
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
-    // Defense: 1 star defended (3 - 2), attacker TH16 >= defender TH15, so 2 points
-    // Total: 8 points
-    expect(member.totalPoints).toBe(8);
+    // Defense tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(6);
     expect(member.defenseDetails).toHaveLength(1);
   });
 });
@@ -653,10 +644,9 @@ describe('CWL Bonus Medals - New Attack Bonus Scoring Rules', () => {
     expect(result.members).toHaveLength(1);
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
-    // Bonus: 3 stars * 1 = 3 points (defender TH16 > attacker TH15, and positions 1,2 are TH16)
-    // Defense: 2 stars defended (3 - 1) * 2 = 4 points (attacker TH16 >= defender TH15)
-    // Total: 13 points
-    expect(member.totalPoints).toBe(13);
+    // Bonus: 3 stars * 1 = 3 points (defender TH16 > attacker TH15, and all above positions are >= TH16)
+    // Defense tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(9);
   });
 
   it('should not award bonus points when attacking higher TH but lower TH exists above', async () => {
@@ -698,7 +688,7 @@ describe('CWL Bonus Medals - New Attack Bonus Scoring Rules', () => {
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
     // Bonus: 0 points (position 1 is TH14 < defender TH16)
-    // Defense: 2 stars defended (3 - 1) * 2 = 4 points (attacker TH14 < defender TH15, so 0 points)
+    // Defense tracked for reference only (no points awarded)
     // Total: 6 points
     expect(member.totalPoints).toBe(6);
   });
@@ -739,9 +729,8 @@ describe('CWL Bonus Medals - New Attack Bonus Scoring Rules', () => {
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
     // Bonus: 0 points (defender TH15 = attacker TH15, not higher)
-    // Defense: 2 stars defended (3 - 1) * 2 = 4 points (attacker TH15 >= defender TH15)
-    // Total: 10 points
-    expect(member.totalPoints).toBe(10);
+    // Defense tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(6);
   });
 
   it('should award bonus points when all positions above defender have equal or higher TH', async () => {
@@ -787,9 +776,8 @@ describe('CWL Bonus Medals - New Attack Bonus Scoring Rules', () => {
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
     // Bonus: 3 stars * 1 = 3 points (all positions above are >= TH16)
-    // Defense: 2 stars defended (3 - 1) * 2 = 4 points (attacker TH16 >= defender TH15)
-    // Total: 13 points
-    expect(member.totalPoints).toBe(13);
+    // Defense tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(9);
   });
 
   it('should handle edge case when defender has no map position', async () => {
@@ -826,9 +814,8 @@ describe('CWL Bonus Medals - New Attack Bonus Scoring Rules', () => {
     const member = result.members[0];
     // Attack: 3 stars * 2 = 6 points
     // Bonus: 0 points (defender has no map position, can't check positions above)
-    // Defense: not attacked = 2 points
-    // Total: 8 points
-    expect(member.totalPoints).toBe(8);
+    // Defense tracked for reference only (no points awarded)
+    expect(member.totalPoints).toBe(6);
   });
 });
 

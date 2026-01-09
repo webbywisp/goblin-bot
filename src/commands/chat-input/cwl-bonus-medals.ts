@@ -673,33 +673,15 @@ export async function calculateClanBonusMedals(
         }
       }
 
-      // Calculate stars defended: 3 - max stars lost from any attack
-      // If not attacked at all in this war, award 2 points (not 6 like before)
-      if (!wasAttackedThisWar) {
-        // Award 2 points per war when not attacked
-        stats.totalPoints += 2;
-        stats.defenseDetails.push({
-          warIndex: index,
-          opponentName,
-          starsDefended: 3 // Defended all 3 stars since not attacked
-        });
-      } else {
-        const starsDefended = Math.max(0, 3 - maxStarsLost);
-        // Only award defense points if attacker had at least the same TH level as defender
-        if (starsDefended > 0 && attackerTownHall >= memberTownHall) {
-          // +2 points per defense star
-          stats.totalPoints += starsDefended * 2;
-        }
-        // Always record defense details with actual stars defended, even if no points awarded
-        // This allows users to see who attacked them and how many stars were defended
-        stats.defenseDetails.push({
-          warIndex: index,
-          opponentName,
-          starsDefended,
-          attackerTownHall: attackerTownHall > 0 ? attackerTownHall : undefined,
-          attackerMapPosition
-        });
-      }
+      // Record defense details without affecting total points
+      const starsDefended = wasAttackedThisWar ? Math.max(0, 3 - maxStarsLost) : 3;
+      stats.defenseDetails.push({
+        warIndex: index,
+        opponentName,
+        starsDefended,
+        attackerTownHall: wasAttackedThisWar && attackerTownHall > 0 ? attackerTownHall : undefined,
+        attackerMapPosition: wasAttackedThisWar ? attackerMapPosition : undefined
+      });
     }
   }
 

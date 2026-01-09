@@ -435,16 +435,7 @@ async function showMemberInspection(
   if (member.defenseDetails.length > 0) {
     const defenseBreakdown = member.defenseDetails
       .map((defense) => {
-        // If not attacked (starsDefended === 3 and no attackerTownHall), award 2 points
         const wasNotAttacked = defense.starsDefended === 3 && defense.attackerTownHall === undefined;
-        // Points are only awarded if attacker TH >= defender TH (for attacks) OR if not attacked at all
-        const pointsAwarded =
-          wasNotAttacked ||
-          (defense.starsDefended > 0 &&
-            defense.starsDefended < 3 &&
-            defense.attackerTownHall !== undefined &&
-            defense.attackerTownHall >= memberTh);
-        const points = wasNotAttacked ? 2 : pointsAwarded ? defense.starsDefended * 2 : 0;
         const attackerInfo =
           defense.attackerMapPosition !== undefined && defense.attackerTownHall
             ? ` (Attacked by Pos ${defense.attackerMapPosition}, TH${defense.attackerTownHall})`
@@ -453,18 +444,17 @@ async function showMemberInspection(
               : defense.attackerMapPosition !== undefined
                 ? ` (Attacked by Pos ${defense.attackerMapPosition})`
                 : '';
-        // Show actual stars defended, even if points are 0 (due to TH mismatch or 3-starred)
-        return (
-          `**War ${defense.warIndex + 1}** vs ${defense.opponentName}\n` +
-          `   ${defense.starsDefended}⭐ defended → **${points} pts**${attackerInfo}`
-        );
+        const summary = wasNotAttacked
+          ? 'Not attacked (full defense)'
+          : `${defense.starsDefended}⭐ defended`;
+        return `**War ${defense.warIndex + 1}** vs ${defense.opponentName}\n   ${summary}${attackerInfo}`;
       })
       .join('\n');
 
     const truncated = defenseBreakdown.length > 1024 ? defenseBreakdown.slice(0, 1020) + '...' : defenseBreakdown;
     embed.addFields({
       name: `🛡️ Defenses (${member.defenseDetails.length})`,
-      value: truncated,
+      value: `${truncated}\n\n*Defenses are tracked for reference only and do not award points.*`,
       inline: false
     });
   }
@@ -499,8 +489,8 @@ async function showMemberInspection(
     `**Point Formula:**\n` +
     `• Attack: +2 pts per star\n` +
     `• Attack Bonus: +1 pt per star if attacking higher TH\n` +
-    `• Defense: +2 pts per star defended\n` +
-    `• Normalized: Total points ÷ Total attacks`;
+    `• Normalized: Total points ÷ Total attacks\n` +
+    `\nDefenses are recorded for reference only and do not award points.`;
 
   embed.addFields({
     name: '🧮 Calculation',
